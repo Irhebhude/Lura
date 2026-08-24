@@ -1,0 +1,6 @@
+{
+  "name": "Lura - Ebook Publishing & Instant Sales Platform",
+  "description": "Publish, sell, and discover e-books with instant checkout, built-in e-reader, automated Google Search SEO indexing, and creator analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
