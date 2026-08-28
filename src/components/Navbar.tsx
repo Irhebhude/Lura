@@ -34,8 +34,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header id="lura-navbar" className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+      <div className="px-3 sm:px-6">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
           {/* Brand Logo */}
           <div className="flex items-center gap-6">
@@ -44,14 +44,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setCurrentTab('marketplace')}
               className="flex items-center gap-2.5 text-left group transition-transform focus:outline-none"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-amber-400 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-all">
-                <div className="w-full h-full bg-neutral-950 rounded-[10px] flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-indigo-400 group-hover:text-white transition-colors" />
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-amber-400 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-all">
+                <div className="w-full h-full bg-neutral-950 rounded-[8px] sm:rounded-[10px] flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400 group-hover:text-white transition-colors" />
                 </div>
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xl font-bold tracking-tight text-white font-serif">Lura</span>
+                  <span className="text-lg sm:text-xl font-bold tracking-tight text-white font-serif">Lura</span>
                   <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     Live
                   </span>

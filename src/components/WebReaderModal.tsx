@@ -33,8 +33,8 @@ export const WebReaderModal: React.FC<WebReaderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/90 backdrop-blur-md">
-      <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden text-neutral-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-neutral-950/90 backdrop-blur-md">
+      <div className="w-full sm:max-w-2xl bg-neutral-900 border border-neutral-800 sm:rounded-2xl shadow-2xl overflow-hidden text-neutral-100 flex flex-col max-h-[100dvh] sm:max-h-[90vh] rounded-t-2xl sm:rounded-2xl">
         {/* Reader Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-800/80 bg-neutral-950/80">
           <div className="flex items-center gap-3 min-w-0">

@@ -115,7 +115,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-[100dvh] h-[100dvh] bg-neutral-950 text-neutral-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white overflow-hidden">
       
       {/* Navigation Bar */}
       <Navbar
@@ -139,7 +139,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1">
+      <main className="flex-1 overflow-y-auto">
         {currentTab === 'marketplace' && (
           <MarketplaceView
             books={books}
@@ -263,37 +263,28 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-neutral-800/80 bg-neutral-950/90 py-10 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-neutral-400">
-          
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-amber-400 p-0.5">
-              <div className="w-full h-full bg-neutral-950 rounded-[10px] flex items-center justify-center">
-                <BookOpen className="w-4 h-4 text-indigo-400" />
+      <footer className="border-t border-neutral-800/80 bg-neutral-950/90 py-4 px-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-400">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-amber-400 p-0.5">
+              <div className="w-full h-full bg-neutral-950 rounded-[6px] flex items-center justify-center">
+                <BookOpen className="w-3 h-3 text-indigo-400" />
               </div>
             </div>
-            <div>
-              <span className="text-sm font-bold text-white font-serif">Lura</span>
-              <p className="text-[11px] text-neutral-500">The Instant E-Book Publishing & Global Selling Platform</p>
-            </div>
+            <span className="font-bold text-white font-serif">Lura</span>
+            <span className="text-neutral-500">© {new Date().getFullYear()}</span>
           </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
+          <div className="flex items-center gap-3">
             <span className="flex items-center gap-1 text-emerald-400">
-              <Globe className="w-3.5 h-3.5" /> Googlebot Schema.org/Book Validated
+              <Globe className="w-3 h-3" /> Schema Validated
             </span>
-            <span>•</span>
+            <span className="text-neutral-600">•</span>
             <span className="flex items-center gap-1 text-neutral-400">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> 256-Bit Encrypted Payments
+              <ShieldCheck className="w-3 h-3 text-indigo-400" /> Encrypted
             </span>
-            <span>•</span>
-            <span>95% Creator Payouts</span>
+            <span className="text-neutral-600">•</span>
+            <span>95% Payouts</span>
           </div>
-
-          <div className="text-[11px] text-neutral-500">
-            © {new Date().getFullYear()} Lura. Built for digital authors and readers worldwide.
-          </div>
-
         </div>
       </footer>
 

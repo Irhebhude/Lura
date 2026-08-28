@@ -43,6 +43,8 @@ export interface EBook {
     indexedTimestamp: string;
   };
   fileSizeMB?: number;
+  ebookFileUrl?: string;
+  ebookFileType?: string;
 }
 
 export interface Review {

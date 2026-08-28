@@ -26,14 +26,14 @@ export const GoogleSeoHub: React.FC<GoogleSeoHubProps> = ({
 
   if (!activeBook) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="px-3 sm:px-6 py-4 sm:py-8">
         <p className="text-neutral-400 text-sm">No books available.</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="px-3 sm:px-6 py-4 sm:py-8">
       <div className="flex items-center gap-3 mb-8">
         <Globe className="w-6 h-6 text-emerald-400" />
         <div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, User, Sparkles, BookOpen, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Lock, Mail, User, Sparkles, BookOpen, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { signInUser, signUpUser } from '../services/storage';
 import { UserAccount } from '../types';
 
@@ -68,27 +68,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 400);
   };
 
-  const handleDemoSignIn = (demoEmail: string, demoName: string) => {
-    setError(null);
-    setLoading(true);
-    setTimeout(() => {
-      const res = signInUser(demoEmail);
-      if (res.success && res.user) {
-        setSuccessMsg(`Logged in as ${demoName}`);
-        setTimeout(() => {
-          if (onAuthSuccess) onAuthSuccess(res.user!);
-          onClose();
-        }, 500);
-      }
-      setLoading(false);
-    }, 300);
-  };
-
   return (
-    <div id="auth-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
+    <div id="auth-modal-overlay" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-neutral-950/80 backdrop-blur-md animate-fadeIn">
       <div 
         id="auth-modal-container" 
-        className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden text-neutral-100 relative"
+        className="w-full sm:max-w-md bg-neutral-900 border border-neutral-800 sm:rounded-2xl shadow-2xl overflow-hidden text-neutral-100 relative rounded-t-2xl sm:rounded-2xl"
       >
         {/* Header decoration */}
         <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-neutral-900 p-6 border-b border-neutral-800 relative">
@@ -293,28 +277,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </form>
 
-        {/* Quick Demo Switcher */}
-        <div className="p-4 bg-neutral-950/60 border-t border-neutral-800/80 text-xs">
-          <p className="text-[11px] text-neutral-400 mb-2 font-medium">Quick Sign-In (1-Click Test):</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoSignIn('prosperozoya50@gmail.com', 'Prosper Ozoya')}
-              className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-medium transition-colors border border-neutral-700/60 flex items-center gap-1.5"
-            >
-              <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              <span>Prosper Ozoya (Creator)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoSignIn('reader@example.com', 'Dev Reader')}
-              className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-medium transition-colors border border-neutral-700/60 flex items-center gap-1.5"
-            >
-              <BookOpen className="w-3 h-3 text-indigo-400" />
-              <span>Reader Account</span>
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
   );

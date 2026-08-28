@@ -27,8 +27,8 @@ export const EbookDetailModal: React.FC<EbookDetailModalProps> = ({
   const reviews = useMemo(() => getReviews(book.id), [book.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
-      <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden text-neutral-100 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-neutral-950/80 backdrop-blur-md">
+      <div className="w-full sm:max-w-2xl bg-neutral-900 border border-neutral-800 sm:rounded-2xl shadow-2xl overflow-hidden text-neutral-100 max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
         {/* Cover Header */}
         <div className={`relative h-56 bg-gradient-to-br ${book.coverGradient || 'from-neutral-800 to-neutral-900'}`}>
           <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover opacity-70" />

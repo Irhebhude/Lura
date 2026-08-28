@@ -54,9 +54,9 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   }, [books, selectedCategory, searchQuery]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="px-3 sm:px-6 py-4 sm:py-8">
       {/* Hero Section */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-indigo-950 via-neutral-900 to-purple-950 border border-neutral-800/60 p-8 sm:p-12 mb-10">
+      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-indigo-950 via-neutral-900 to-purple-950 border border-neutral-800/60 p-5 sm:p-8 lg:p-12 mb-6 sm:mb-10">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(99,102,241,0.15),transparent_60%)]" />
         <div className="relative z-10">
           <h1 className="text-3xl sm:text-4xl font-bold text-white font-serif mb-3">
@@ -109,12 +109,12 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
       {/* Books Grid */}
       {filteredBooks.length === 0 ? (
-        <div className="text-center py-20">
+        <div className="text-center py-12 sm:py-20">
           <BookOpen className="w-12 h-12 text-neutral-700 mx-auto mb-4" />
           <p className="text-neutral-400 text-sm">No books found matching your search.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {filteredBooks.map((book) => {
             const inLibrary = libraryIds.includes(book.id);
             return (
