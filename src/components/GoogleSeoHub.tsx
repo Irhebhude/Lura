@@ -21,7 +21,8 @@ export const GoogleSeoHub: React.FC<GoogleSeoHubProps> = ({
   onReadSample,
 }) => {
   const activeBook = selectedBook || books[0];
-  const reviews = useMemo(() => (activeBook ? getReviews(activeBook.id) : []), [activeBook]);
+  const activeBookId = activeBook?.id;
+  const reviews = useMemo(() => (activeBookId ? getReviews(activeBookId) : []), [activeBookId]);
 
   if (!activeBook) {
     return (

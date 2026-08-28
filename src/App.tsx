@@ -44,17 +44,20 @@ export default function App() {
   const [viewingAuthorHandle, setViewingAuthorHandle] = useState<string>('prosperozoya');
 
   // Load state on mount & synchronize
-  const syncState = () => {
+  const syncState = React.useCallback(() => {
     setBooks(getEbooks());
     setAuthor(getAuthor());
     setLibraryIds(getLibraryBookIds());
     setCurrencyState(getSelectedCurrency());
     setCurrentUser(getCurrentUser());
-  };
+  }, []);
 
   useEffect(() => {
-    initializeStorage();
-    syncState();
+    const init = async () => {
+      await initializeStorage();
+      syncState();
+    };
+    init();
 
     const handleStorageUpdate = () => {
       syncState();
@@ -62,7 +65,7 @@ export default function App() {
 
     window.addEventListener('lura_storage_update', handleStorageUpdate);
     return () => window.removeEventListener('lura_storage_update', handleStorageUpdate);
-  }, []);
+  }, [syncState]);
 
   const handleSetCurrency = (code: CurrencyCode) => {
     setCurrencyState(code);

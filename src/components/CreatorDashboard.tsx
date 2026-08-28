@@ -36,13 +36,13 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   const creatorBooks = books.filter((b) => b.authorId === author.id);
   const recentOrders = orders.slice(0, 5);
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     const amt = parseFloat(withdrawAmount);
     if (isNaN(amt) || amt <= 0) {
       setWithdrawMsg('Enter a valid amount.');
       return;
     }
-    const result = requestWithdrawal(amt, currency);
+    const result = await requestWithdrawal(amt, currency);
     setWithdrawMsg(result.message);
     if (result.success) setWithdrawAmount('');
   };

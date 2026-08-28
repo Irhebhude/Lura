@@ -157,6 +157,11 @@ export const INITIAL_EBOOKS: EBook[] = [
         title: 'Chapter 1: The Token Hierarchy Matrix',
         content: `### Understanding Global vs. Alias vs. Component Tokens\n\nMost design systems fail because they make tokens either too rigid or too abstract.\n\nA resilient system separates tokens into three distinct tiers:\n1. **Tier 1 - Primitive Tokens**: Raw values (e.g. \`color.slate.900 = #0f172a\`).\n2. **Tier 2 - Semantic/Alias Tokens**: Purpose-bound abstractions (e.g. \`surface.primary = color.slate.900\`).\n3. **Tier 3 - Component Tokens**: Strict scope overrides (e.g. \`button.primary.hover.bg = surface.primary\`).`,
       },
+      {
+        id: 'c2',
+        title: 'Chapter 2: Accessible Color Theory & Contrast Ratios',
+        content: `### Building Palettes That Never Fail WCAG\n\nAccessibility is not optional—it is the foundation of professional design systems. The math is simple: your text must maintain a **4.5:1 contrast ratio** against its background for normal text, and **3:1** for large text.\n\n#### The OKLCH Advantage\nTraditional hex and HSL color spaces are perceptually uneven. A hue shift in HSL can appear to jump in brightness while the numerical value stays flat. OKLCH (OK Lightness, Chroma, Hue) solves this by modeling color the way human vision actually perceives it.\n\nWhen building your primitive palette:\n1. Start with your brand hue in OKLCH.\n2. Generate 10 evenly-spaced lightness steps from 10 (darkest) to 95 (lightest).\n3. Keep chroma moderate (0.05–0.15) for base tones and increase it for accent stops.\n4. Run every text-on-background pair through a contrast checker before publishing.`,
+      },
     ],
     fullChapters: [
       {
@@ -168,6 +173,16 @@ export const INITIAL_EBOOKS: EBook[] = [
         id: 'c2',
         title: 'Chapter 2: Accessible Color Theory & Contrast Ratios',
         content: `### Perfecting WCAG AA & AAA Compliance\n\nLearn how perceptual lightness models (like OKLCH) create harmonious palettes that never fail accessibility checks under light or dark modes.`,
+      },
+      {
+        id: 'c3',
+        title: 'Chapter 3: Figma Variables to Code Sync',
+        content: `### Bridging the Design-Engineering Gap\n\nThe biggest friction in design systems is keeping Figma and code in sync. This chapter walks through the Figma Variables REST API, JSON export pipelines, and automated Style Dictionary builds that push token changes directly into your Tailwind config and CSS custom properties. You will set up a GitHub Action that watches for Figma branch merges and opens a pull request with the updated token files within minutes.`,
+      },
+      {
+        id: 'c4',
+        title: 'Chapter 4: React Component Recipes',
+        content: `### Production-Ready Radix + Tailwind Patterns\n\nRather than shipping a massive component library, this chapter teaches you 12 atomic recipes—composable patterns that combine Radix primitives with Tailwind utility classes. Each recipe includes hover, focus, active, and disabled states, along with dark-mode variants. The Button, Dialog, Select, and Tooltip recipes alone cover 80% of enterprise UI needs.`,
       },
     ],
     seo: {
@@ -217,12 +232,37 @@ export const INITIAL_EBOOKS: EBook[] = [
         title: 'Chapter 1: The Anatomy of High-Reliability Prompts',
         content: `### Moving from Probabilistic Guessing to Deterministic Engineering\n\nWhen deploying LLMs into production, "good vibes" prompt engineering is the #1 reason for catastrophic hallucinations.\n\nReliable prompts follow the **CO-STAR Framework**:\n- **C**ontext: High-precision environment state.\n- **O**bjective: Singular, well-bounded task.\n- **S**tyle & Voice: Explicit tone constraints.\n- **T**one & Form: Structured tags.\n- **A**udience: Persona of the consumer.\n- **R**esponse Schema: Strict JSON / XML syntax definitions.`,
       },
+      {
+        id: 'c2',
+        title: 'Chapter 2: Structured Output with JSON Schema',
+        content: `### Forcing LLMs to Return Machine-Readable Data\n\nThe single biggest leap in production LLM reliability came when providers added native JSON mode and schema enforcement. Instead of hoping the model returns valid JSON, you define the exact shape you need and the inference layer validates it before the response ever reaches your application code.\n\n#### Gemini Native Structured Output\nGoogle's Gemini API supports \`response_mime_type: "application/json"\` with a \`response_schema\` parameter. You pass a JSON Schema object and Gemini will constrain its token generation to produce only valid JSON matching that schema.\n\n\`\`\`python\nfrom google import genai\n\nclient = genai.Client()\nresponse = client.models.generate_content(\n    model="gemini-2.0-flash",\n    contents="Extract the sentiment and key topics from this review.",\n    config={\n        "response_mime_type": "application/json",\n        "response_schema": {\n            "type": "object",\n            "properties": {\n                "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},\n                "confidence": {"type": "number"},\n                "topics": {"type": "array", "items": {"type": "string"}}\n            },\n            "required": ["sentiment", "confidence", "topics"]\n        }\n    }\n)\n\`\`\`\n\nThis pattern eliminates the need for brittle regex parsing and post-hoc validation loops. When the schema says \`"confidence"\` is a number between 0 and 1, the model will produce exactly that.`,
+      },
     ],
     fullChapters: [
       {
         id: 'c1',
         title: 'Chapter 1: The Anatomy of High-Reliability Prompts',
         content: `### Structured Prompting Strategies\n\nLearn the fundamental mathematical grounding behind temperature, top-p, system instructions, and schema-guided decoding.`,
+      },
+      {
+        id: 'c2',
+        title: 'Chapter 2: Structured Output with JSON Schema',
+        content: `### Eliminating Hallucinated Data with Typed Responses\n\nUse native JSON mode on Gemini and Claude to guarantee valid, schema-conforming outputs. Covers enum constraints, nested object schemas, and retry logic for edge cases.`,
+      },
+      {
+        id: 'c3',
+        title: 'Chapter 3: Function Calling & Tool Use',
+        content: `### Letting LLMs Interact with Your APIs\n\nFunction calling transforms an LLM from a text generator into an intelligent API orchestrator. This chapter covers defining tool schemas, handling parallel tool calls, implementing confirmation gates for destructive operations, and chaining multiple tool calls across turns. You will build a working Slack bot that queries a PostgreSQL database, creates Jira tickets, and sends Slack notifications—all orchestrated by a single Gemini model call with five registered tools.`,
+      },
+      {
+        id: 'c4',
+        title: 'Chapter 4: RAG Architecture Patterns',
+        content: `### Retrieval-Augmented Generation in Production\n\nRAG is the backbone of enterprise LLM applications. This chapter covers chunking strategies (fixed-size, semantic, recursive), embedding model selection, vector database comparison (Pinecone vs. Weaviate vs. pgvector), hybrid search (BM25 + semantic), and re-ranking with cross-encoders. You will build a complete RAG pipeline that ingests a 500-page technical documentation set and answers questions with cited sources and confidence scores.`,
+      },
+      {
+        id: 'c5',
+        title: 'Chapter 5: Autonomous Agent Loops',
+        content: `### Building Self-Correcting Multi-Step Agents\n\nAgents that chain multiple LLM calls with tool invocations need guardrails. This chapter covers the ReAct pattern, reflection loops where the model critiques its own output, budget controls (token limits, max iterations), and human-in-the-loop checkpoints. You will implement an agent that researches a topic, writes a draft, verifies facts against retrieved sources, and iterates until quality thresholds are met.`,
       },
     ],
     seo: {
@@ -272,12 +312,32 @@ export const INITIAL_EBOOKS: EBook[] = [
         title: 'Chapter 1: The One-Sentence Value Proposition',
         content: `### Why Most Newsletters Die in 30 Days\n\nIf someone asks what your newsletter is about and it takes you more than 5 seconds to answer, you do not have a publication—you have a personal journal.\n\nThe high-converting formula:\n*"I help [Specific Audience] achieve [Desirable Transformation] through [Unique Mechanism] in [Timeframe]."*`,
       },
+      {
+        id: 'c2',
+        title: 'Chapter 2: The 7 Headline Formulas',
+        content: `### Headlines That Demand to Be Opened\n\nYour subject line is doing 90% of the work. After analyzing 12,000 newsletter issues across 200 creators, seven formulas consistently outperform:\n\n1. **The Contrarian Take**: *"Why I Stopped Posting Daily (and Doubled My Revenue)"*\n2. **The Specific Number**: *"3 Cold Email Templates That Landed 47 Clients"*\n3. **The Curiosity Gap**: *"The One Metric Nobody Tracks (That Changes Everything)"*\n4. **The Personal Story**: *"How I Went from 0 to 10k Subscribers in 90 Days"*\n5. **The Urgency Play**: *"Last Chance: The Template Pack That 2,000 Creators Already Downloaded"*\n6. **The Authority Signal**: *"What I Learned Writing for The Verge for 5 Years"*\n7. **The Direct Promise**: *"This Week: A Step-by-Step Guide to Your First $1k from Sponsorships"*\n\nThe key insight: every formula works because it makes a **specific promise** to a **specific reader**. Generic headlines like "Weekly Update #47" guarantee you will never break 15% open rates.`,
+      },
     ],
     fullChapters: [
       {
         id: 'c1',
         title: 'Chapter 1: The One-Sentence Value Proposition',
         content: `### Positioning for Explosive Growth\n\nNail your unique angle and promise before sending your first issue.`,
+      },
+      {
+        id: 'c2',
+        title: 'Chapter 2: The 7 Headline Formulas',
+        content: `### Subject Lines That Convert\n\nLearn the exact subject line patterns that top Substack and Beehiiv creators use to consistently hit 50%+ open rates, including the contrarian take, curiosity gap, and specific number formulas.`,
+      },
+      {
+        id: 'c3',
+        title: 'Chapter 3: The Viral Referral Engine',
+        content: `### Turning Readers into Evangelists\n\nThe fastest-growing newsletters do not rely on ads—they build referral loops. This chapter covers setting up a rewards-based referral program on Beehiiv or Substack, creating shareable "gateway" issues designed purely for viral distribution, partnering with complementary newsletters for cross-promotion swaps, and using Twitter threads as top-of-funnel subscriber magnets. You will learn the exact referral milestone rewards structure (free stickers at 3 referrals, premium templates at 10, 1-on-1 calls at 25) that turned one creator's 500-subscriber list into a 40,000-subscriber community in 8 months.`,
+      },
+      {
+        id: 'c4',
+        title: 'Chapter 4: Monetization Beyond Ads',
+        content: `### Building a Multi-Stream Newsletter Business\n\nSponsorships are the entry point, not the ceiling. This chapter covers the tiered sponsorship pricing model (solo ads vs. dedicated sends vs. recommendation swaps), selling digital products directly to your audience, launching paid premium tiers with exclusive content, and building a consulting or coaching practice off the back of your newsletter authority. Includes the exact sponsorship rate card template and cold outreach email sequence that landed $5,000+ brand deals for a 10k-subscriber list.`,
       },
     ],
     seo: {
@@ -327,12 +387,32 @@ export const INITIAL_EBOOKS: EBook[] = [
         title: 'Chapter 1: The 5-Pillar Flavor Matrix',
         content: `### High Heat, Acid, Salt, Fat, and Crunch\n\nYou don't need 30 spices to make unforgettable food. You only need to balance the five core culinary vectors:\n\n1. **Fat**: High quality extra virgin olive oil or grass-fed butter.\n2. **Acid**: Aged balsamic or fresh Meyer lemons.\n3. **Salt & Umami**: Flaky sea salt or aged Parmigiano.\n4. **Heat**: Calabrian chili paste or cracked peppercorn.\n5. **Texture**: Toasted pine nuts or crispy shallots.`,
       },
+      {
+        id: 'c2',
+        title: 'Chapter 2: The 9 Pantry Staples',
+        content: `### The Foundation That Creates 100+ Combinations\n\nAfter years of professional kitchen work, I distilled every recipe down to 9 ingredients that, when stocked, let you cook almost anything on a whim:\n\n1. **Extra Virgin Olive Oil** — the universal fat for sautéing, finishing, and dressing.\n2. **Flaky Sea Salt** (Maldon or Jacobsen) — finishing salt transforms any dish.\n3. **Fresh Lemons** — acid is the most underused seasoning in home cooking.\n4. **Garlic** — the aromatic backbone of Mediterranean, Asian, and Latin cuisines.\n5. **Crushed Red Pepper Flakes** — instant heat that wakes up any plate.\n6. **Soy Sauce** (or tamari for gluten-free) — umami depth in seconds.\n7. **Honey** — balances acid, glazes proteins, and rounds out dressings.\n8. **Dijon Mustard** — the secret emulsifier for vinaigrettes and pan sauces.\n9. **Good Butter** — finishing butter on vegetables or pasta is restaurant-quality magic.\n\nWith these 9 staples plus whatever protein and vegetable is on sale, you can cook a different delicious meal every night for months.`,
+      },
     ],
     fullChapters: [
       {
         id: 'c1',
         title: 'Chapter 1: The 5-Pillar Flavor Matrix',
         content: `### The Foundations of Rapid Cooking\n\nTransform simple supermarket ingredients into gourmet meals using proper pan temperature and finishing acids.`,
+      },
+      {
+        id: 'c2',
+        title: 'Chapter 2: The 9 Pantry Staples',
+        content: `### Your Flavor Arsenal\n\nStock these 9 ingredients and you can make 100+ combinations without a recipe. Covers sourcing, storage, and the science of why each ingredient works.`,
+      },
+      {
+        id: 'c3',
+        title: 'Chapter 3: The 20-Minute Weeknight Formula',
+        content: `### Protein + Acid + Fat + Crunch = Dinner\n\nEvery weeknight meal follows the same formula. This chapter gives you the template: choose a protein, apply high heat for the Maillard reaction, deglaze with acid, finish with fat and texture. Five worked examples with step-by-step photos: seared salmon with lemon-butter pan sauce, crispy chicken thighs with honey-soy glaze, shrimp scampi with chili and garlic, steak tips with balsamic reduction, and crispy tofu with sriracha-lime drizzle. Each recipe includes macro breakdowns and total prep time under 20 minutes.`,
+      },
+      {
+        id: 'c4',
+        title: 'Chapter 4: The Sunday Batch Prep System',
+        content: `### Cook Once, Eat All Week\n\nSpend 90 minutes on Sunday and you will have grab-and-go lunches and 15-minute weeknight dinners for the entire week. This chapter covers the batch prep workflow: roast a sheet pan of proteins, cook a pot of grain, prepare two versatile sauces, and wash/chop vegetables. Includes the shopping list, oven temperature sequencing, and container organization system that saves the average professional 6+ hours per week.`,
       },
     ],
     seo: {
@@ -370,17 +450,80 @@ export const INITIAL_REVIEWS: Review[] = [
     bookId: 'book_2',
     userName: 'Liam Chen, San Francisco',
     rating: 5,
-    comment: 'Elena’s breakdown of token tiers is the cleanest explanation I have ever seen. Transformed our team’s Figma-to-code pipeline.',
+    comment: 'Elena\'s breakdown of token tiers is the cleanest explanation I have ever seen. Transformed our team\'s Figma-to-code pipeline.',
     date: '2026-02-23',
     verifiedBuyer: true,
   },
   {
     id: 'rev_4',
+    bookId: 'book_2',
+    userName: 'Priya Sharma, Bangalore',
+    rating: 5,
+    comment: 'The OKLCH color theory chapter alone is worth 10x the price. Our design system now passes WCAG AAA on every component.',
+    date: '2026-03-01',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_5',
     bookId: 'book_3',
     userName: 'Sophie Martin, Paris',
     rating: 5,
     comment: 'The JSON schema prompt patterns are genius. No more broken JSON responses from our production bots.',
     date: '2026-02-24',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_6',
+    bookId: 'book_3',
+    userName: 'Jake Morrison, Austin',
+    rating: 5,
+    comment: 'The RAG architecture chapter is the most practical guide I have read. Built a working documentation bot in a weekend using the chunking strategies from this book.',
+    date: '2026-03-05',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_7',
+    bookId: 'book_3',
+    userName: 'Yuki Tanaka, Tokyo',
+    rating: 4,
+    comment: 'Excellent coverage of function calling patterns. The agent loop chapter could use more Python examples but the concepts are solid.',
+    date: '2026-03-08',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_8',
+    bookId: 'book_4',
+    userName: 'Marcus Webb, New York',
+    rating: 5,
+    comment: 'The 7 headline formulas chapter literally doubled my open rates overnight. Went from 18% to 37% on my very next send.',
+    date: '2026-02-15',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_9',
+    bookId: 'book_4',
+    userName: 'Fatima Al-Rashid, Dubai',
+    rating: 5,
+    comment: 'The sponsorship rate card template landed me a $3,200 deal with my first brand partner at just 4,000 subscribers. This book pays for itself in one email.',
+    date: '2026-03-02',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_10',
+    bookId: 'book_5',
+    userName: 'Tom Henderson, Melbourne',
+    rating: 5,
+    comment: 'The Sunday batch prep system saved my sanity. I went from ordering DoorDash every night to cooking actual meals in 15 minutes. My grocery bill dropped by 40%.',
+    date: '2026-02-12',
+    verifiedBuyer: true,
+  },
+  {
+    id: 'rev_11',
+    bookId: 'book_5',
+    userName: 'Aisha Patel, Mumbai',
+    rating: 5,
+    comment: 'As someone who burned rice for years, the 5-Pillar Flavor Matrix made everything click. The lemon-butter salmon recipe is now my signature dinner party dish.',
+    date: '2026-02-28',
     verifiedBuyer: true,
   },
 ];

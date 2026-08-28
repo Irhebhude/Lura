@@ -1,19 +1,6 @@
 import { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, BankDetails, UserAccount } from '../types';
 import { INITIAL_EBOOKS, INITIAL_AUTHOR, INITIAL_REVIEWS, INITIAL_COUPONS, CURRENCIES } from '../data/initialData';
 
-const KEYS = {
-  EBOOKS: 'lura_ebooks_v1',
-  AUTHOR: 'lura_author_v1',
-  ORDERS: 'lura_orders_v1',
-  REVIEWS: 'lura_reviews_v1',
-  COUPONS: 'lura_coupons_v1',
-  LIBRARY: 'lura_library_v1',
-  CURRENCY: 'lura_currency_v1',
-  WITHDRAWALS: 'lura_withdrawals_v1',
-  USER: 'lura_current_user_v1',
-  USERS_LIST: 'lura_users_list_v1',
-};
-
 export const SUPPORTED_BANKS = [
   { name: 'Access Bank', code: '044', type: 'NGN' },
   { name: 'Guaranty Trust Bank (GTBank)', code: '058', type: 'NGN' },
@@ -36,307 +23,216 @@ export const SUPPORTED_BANKS = [
   { name: 'Stripe Direct Creator Payout', code: 'STRIPE_GLOBAL', type: 'ALL' },
 ];
 
-const INITIAL_WITHDRAWALS: WithdrawalRequest[] = [
-  {
-    id: 'wdr_8921',
-    amountUSD: 1200,
-    amountLocal: 1860000,
-    currency: 'NGN',
-    bankName: 'Guaranty Trust Bank (GTBank)',
-    accountNumber: '0234819201',
-    accountName: 'Prosper Ozoya',
-    status: 'completed',
-    date: '2026-02-15',
-    reference: 'LURA-PAY-9821034',
-  },
-  {
-    id: 'wdr_8920',
-    amountUSD: 850,
-    amountLocal: 1317500,
-    currency: 'NGN',
-    bankName: 'Moniepoint MFB',
-    accountNumber: '5051892011',
-    accountName: 'Prosper Ozoya',
-    status: 'completed',
-    date: '2026-01-28',
-    reference: 'LURA-PAY-7719204',
-  },
-];
+// ── In-memory cache ──────────────────────────────────────────────
+interface Cache {
+  books: EBook[];
+  author: AuthorProfile;
+  orders: Order[];
+  reviews: Review[];
+  coupons: Coupon[];
+  library: string[];
+  currency: CurrencyCode;
+  withdrawals: WithdrawalRequest[];
+  users: UserAccount[];
+  currentUser: UserAccount | null;
+}
 
-export function initializeStorage() {
-  if (typeof window === 'undefined') return;
+let _cache: Cache = {
+  books: INITIAL_EBOOKS,
+  author: INITIAL_AUTHOR,
+  orders: [],
+  reviews: INITIAL_REVIEWS,
+  coupons: INITIAL_COUPONS,
+  library: [],
+  currency: 'USD',
+  withdrawals: [],
+  users: [],
+  currentUser: null,
+};
 
-  if (!localStorage.getItem(KEYS.EBOOKS)) {
-    localStorage.setItem(KEYS.EBOOKS, JSON.stringify(INITIAL_EBOOKS));
-  }
-  if (!localStorage.getItem(KEYS.AUTHOR)) {
-    localStorage.setItem(KEYS.AUTHOR, JSON.stringify(INITIAL_AUTHOR));
-  }
-  if (!localStorage.getItem(KEYS.REVIEWS)) {
-    localStorage.setItem(KEYS.REVIEWS, JSON.stringify(INITIAL_REVIEWS));
-  }
-  if (!localStorage.getItem(KEYS.COUPONS)) {
-    localStorage.setItem(KEYS.COUPONS, JSON.stringify(INITIAL_COUPONS));
-  }
-  if (!localStorage.getItem(KEYS.ORDERS)) {
-    localStorage.setItem(KEYS.ORDERS, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(KEYS.LIBRARY)) {
-    localStorage.setItem(KEYS.LIBRARY, JSON.stringify([]));
-  }
-  if (!localStorage.getItem(KEYS.CURRENCY)) {
-    localStorage.setItem(KEYS.CURRENCY, 'USD');
-  }
-  if (!localStorage.getItem(KEYS.WITHDRAWALS)) {
-    localStorage.setItem(KEYS.WITHDRAWALS, JSON.stringify(INITIAL_WITHDRAWALS));
+let _initialized = false;
+
+// ── API helpers ──────────────────────────────────────────────────
+const API = '/api';
+
+async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const opts: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API}${path}`, opts);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+function fire(method: string, path: string, body?: unknown) {
+  api(method, path, body).catch(() => {});
+}
+
+function dispatch() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('lura_storage_update'));
   }
 }
 
-export function getEbooks(): EBook[] {
-  if (typeof window === 'undefined') return INITIAL_EBOOKS;
-  const data = localStorage.getItem(KEYS.EBOOKS);
-  if (!data) return INITIAL_EBOOKS;
+// ── Initialization ───────────────────────────────────────────────
+export async function initializeStorage(): Promise<void> {
+  if (typeof window === 'undefined' || _initialized) return;
   try {
-    return JSON.parse(data);
+    const data = await api<Cache>('GET', '/init');
+    _cache = data;
   } catch {
-    return INITIAL_EBOOKS;
+    console.warn('API unavailable, using default data');
   }
+  _initialized = true;
+}
+
+// ── Books ────────────────────────────────────────────────────────
+export function getEbooks(): EBook[] {
+  return _cache.books;
 }
 
 export function saveEbook(book: EBook): EBook[] {
-  const books = getEbooks();
-  const index = books.findIndex((b) => b.id === book.id);
-  if (index >= 0) {
-    books[index] = book;
-  } else {
-    books.unshift(book);
-  }
-  localStorage.setItem(KEYS.EBOOKS, JSON.stringify(books));
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return books;
+  const i = _cache.books.findIndex(b => b.id === book.id);
+  if (i >= 0) _cache.books[i] = book; else _cache.books.unshift(book);
+  dispatch();
+  fire('POST', '/books', book);
+  return _cache.books;
 }
 
 export function deleteEbook(bookId: string): EBook[] {
-  const books = getEbooks().filter((b) => b.id !== bookId);
-  localStorage.setItem(KEYS.EBOOKS, JSON.stringify(books));
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return books;
+  _cache.books = _cache.books.filter(b => b.id !== bookId);
+  dispatch();
+  fire('DELETE', `/books/${bookId}`);
+  return _cache.books;
 }
 
+// ── Author ───────────────────────────────────────────────────────
 export function getAuthor(): AuthorProfile {
-  if (typeof window === 'undefined') return INITIAL_AUTHOR;
-  const data = localStorage.getItem(KEYS.AUTHOR);
-  if (!data) return INITIAL_AUTHOR;
-  try {
-    return JSON.parse(data);
-  } catch {
-    return INITIAL_AUTHOR;
-  }
+  return _cache.author;
 }
 
 export function updateAuthor(updated: Partial<AuthorProfile>): AuthorProfile {
-  const current = getAuthor();
-  const merged: AuthorProfile = { ...current, ...updated };
-  localStorage.setItem(KEYS.AUTHOR, JSON.stringify(merged));
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return merged;
+  _cache.author = { ..._cache.author, ...updated };
+  dispatch();
+  fire('PUT', '/author', _cache.author);
+  return _cache.author;
 }
 
 export function updateBankDetails(details: BankDetails): AuthorProfile {
-  const author = getAuthor();
-  author.bankDetails = details;
-  return updateAuthor(author);
+  _cache.author.bankDetails = details;
+  return updateAuthor(_cache.author);
 }
 
+// ── Orders ───────────────────────────────────────────────────────
 export function getOrders(): Order[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(KEYS.ORDERS);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
+  return _cache.orders;
 }
 
 export function saveOrder(order: Order): void {
-  const orders = getOrders();
-  orders.unshift(order);
-  localStorage.setItem(KEYS.ORDERS, JSON.stringify(orders));
-
-  // Add to library
-  const library = getLibraryBookIds();
-  if (!library.includes(order.bookId)) {
-    library.unshift(order.bookId);
-    localStorage.setItem(KEYS.LIBRARY, JSON.stringify(library));
-  }
-
-  // Update sales count on ebook
-  const books = getEbooks();
-  const bookIndex = books.findIndex((b) => b.id === order.bookId);
-  if (bookIndex >= 0) {
-    books[bookIndex].salesCount = (books[bookIndex].salesCount || 0) + 1;
-    localStorage.setItem(KEYS.EBOOKS, JSON.stringify(books));
-  }
-
-  // Credit author wallet revenue (95% payout rate)
-  const author = getAuthor();
-  const netEarningsUSD = (order.amountPaid / (CURRENCIES[order.currency]?.rate || 1)) * 0.95;
-  author.totalSales = (author.totalSales || 0) + 1;
-  author.totalRevenueUSD = (author.totalRevenueUSD || 0) + (order.amountPaid / (CURRENCIES[order.currency]?.rate || 1));
-  author.payoutBalanceUSD = (author.payoutBalanceUSD || 0) + netEarningsUSD;
-  localStorage.setItem(KEYS.AUTHOR, JSON.stringify(author));
-
-  window.dispatchEvent(new Event('lura_storage_update'));
+  _cache.orders.unshift(order);
+  if (!_cache.library.includes(order.bookId)) _cache.library.unshift(order.bookId);
+  const bi = _cache.books.findIndex(b => b.id === order.bookId);
+  if (bi >= 0) _cache.books[bi].salesCount = (_cache.books[bi].salesCount || 0) + 1;
+  const rate = CURRENCIES[order.currency]?.rate || 1;
+  _cache.author.totalSales = (_cache.author.totalSales || 0) + 1;
+  _cache.author.totalRevenueUSD = (_cache.author.totalRevenueUSD || 0) + (order.amountPaid / rate);
+  _cache.author.payoutBalanceUSD = (_cache.author.payoutBalanceUSD || 0) + (order.amountPaid / rate) * 0.95;
+  dispatch();
+  fire('POST', '/orders', order);
 }
 
+// ── Withdrawals ──────────────────────────────────────────────────
 export function getWithdrawals(): WithdrawalRequest[] {
-  if (typeof window === 'undefined') return INITIAL_WITHDRAWALS;
-  const data = localStorage.getItem(KEYS.WITHDRAWALS);
-  if (!data) return INITIAL_WITHDRAWALS;
+  return _cache.withdrawals;
+}
+
+export async function requestWithdrawal(
+  amountUSD: number,
+  currency: CurrencyCode,
+): Promise<{ success: boolean; message: string; withdrawal?: WithdrawalRequest }> {
+  if (amountUSD <= 0) return { success: false, message: 'Invalid withdrawal amount.' };
+  if (_cache.author.payoutBalanceUSD < amountUSD) return { success: false, message: 'Insufficient balance in your Lura wallet.' };
+  if (!_cache.author.bankDetails?.accountNumber) return { success: false, message: 'Please configure your bank payout details in Creator Studio first.' };
+
   try {
-    return JSON.parse(data);
+    const result = await api<{ success: boolean; message: string; withdrawal?: WithdrawalRequest }>('POST', '/withdrawals', { amountUSD, currency });
+    if (result.success && result.withdrawal) {
+      _cache.author.payoutBalanceUSD -= amountUSD;
+      _cache.withdrawals.unshift(result.withdrawal);
+      dispatch();
+    }
+    return result;
   } catch {
-    return INITIAL_WITHDRAWALS;
+    return { success: false, message: 'Network error. Please try again.' };
   }
 }
 
-export function requestWithdrawal(amountUSD: number, currency: CurrencyCode): { success: boolean; message: string; withdrawal?: WithdrawalRequest } {
-  const author = getAuthor();
-  if (amountUSD <= 0) {
-    return { success: false, message: 'Invalid withdrawal amount.' };
-  }
-  if (author.payoutBalanceUSD < amountUSD) {
-    return { success: false, message: 'Insufficient balance in your Lura wallet.' };
-  }
-  if (!author.bankDetails || !author.bankDetails.accountNumber) {
-    return { success: false, message: 'Please configure your bank payout details in Creator Studio first.' };
-  }
-
-  const rate = CURRENCIES[currency]?.rate || 1;
-  const amountLocal = amountUSD * rate;
-
-  const newWithdrawal: WithdrawalRequest = {
-    id: `wdr_${Date.now().toString().slice(-6)}`,
-    amountUSD,
-    amountLocal,
-    currency,
-    bankName: author.bankDetails.bankName,
-    accountNumber: author.bankDetails.accountNumber,
-    accountName: author.bankDetails.accountName || author.name,
-    status: 'completed',
-    date: new Date().toISOString().split('T')[0],
-    reference: `LURA-PAY-${Math.floor(1000000 + Math.random() * 9000000)}`,
-  };
-
-  author.payoutBalanceUSD -= amountUSD;
-  updateAuthor(author);
-
-  const withdrawals = getWithdrawals();
-  withdrawals.unshift(newWithdrawal);
-  localStorage.setItem(KEYS.WITHDRAWALS, JSON.stringify(withdrawals));
-
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return { success: true, message: `Successfully transferred ${CURRENCIES[currency].symbol}${amountLocal.toLocaleString()} to ${newWithdrawal.bankName}!`, withdrawal: newWithdrawal };
-}
-
+// ── Library ──────────────────────────────────────────────────────
 export function getLibraryBookIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(KEYS.LIBRARY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
+  return _cache.library;
 }
 
 export function isBookInLibrary(bookId: string): boolean {
-  return getLibraryBookIds().includes(bookId);
+  return _cache.library.includes(bookId);
 }
 
+// ── Reviews ──────────────────────────────────────────────────────
 export function getReviews(bookId?: string): Review[] {
-  if (typeof window === 'undefined') return INITIAL_REVIEWS;
-  const data = localStorage.getItem(KEYS.REVIEWS);
-  if (!data) return INITIAL_REVIEWS;
-  try {
-    const list: Review[] = JSON.parse(data);
-    if (bookId) return list.filter((r) => r.bookId === bookId);
-    return list;
-  } catch {
-    return INITIAL_REVIEWS;
-  }
+  if (bookId) return _cache.reviews.filter(r => r.bookId === bookId);
+  return _cache.reviews;
 }
 
 export function addReview(review: Omit<Review, 'id' | 'date'>): Review {
-  const reviews = getReviews();
-  const newReview: Review = {
+  const r: Review = {
     ...review,
     id: `rev_${Date.now()}`,
     date: new Date().toISOString().split('T')[0],
   };
-  reviews.unshift(newReview);
-  localStorage.setItem(KEYS.REVIEWS, JSON.stringify(reviews));
-
-  const books = getEbooks();
-  const book = books.find((b) => b.id === review.bookId);
-  if (book) {
-    const bookReviews = reviews.filter((r) => r.bookId === review.bookId);
-    const avgRating = bookReviews.reduce((sum, r) => sum + r.rating, 0) / bookReviews.length;
-    book.rating = Number(avgRating.toFixed(2));
-    book.reviewsCount = bookReviews.length;
-    localStorage.setItem(KEYS.EBOOKS, JSON.stringify(books));
+  _cache.reviews.unshift(r);
+  const br = _cache.reviews.filter(x => x.bookId === review.bookId);
+  const bi = _cache.books.findIndex(b => b.id === review.bookId);
+  if (bi >= 0 && br.length) {
+    _cache.books[bi].rating = Number((br.reduce((s, x) => s + x.rating, 0) / br.length).toFixed(2));
+    _cache.books[bi].reviewsCount = br.length;
   }
-
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return newReview;
+  dispatch();
+  fire('POST', '/reviews', r);
+  return r;
 }
 
+// ── Coupons ──────────────────────────────────────────────────────
 export function getCoupons(): Coupon[] {
-  if (typeof window === 'undefined') return INITIAL_COUPONS;
-  const data = localStorage.getItem(KEYS.COUPONS);
-  if (!data) return INITIAL_COUPONS;
-  try {
-    return JSON.parse(data);
-  } catch {
-    return INITIAL_COUPONS;
-  }
+  return _cache.coupons;
 }
 
 export function saveCoupon(coupon: Coupon): Coupon[] {
-  const coupons = getCoupons();
-  const index = coupons.findIndex((c) => c.id === coupon.id);
-  if (index >= 0) {
-    coupons[index] = coupon;
-  } else {
-    coupons.unshift(coupon);
-  }
-  localStorage.setItem(KEYS.COUPONS, JSON.stringify(coupons));
-  window.dispatchEvent(new Event('lura_storage_update'));
-  return coupons;
+  const i = _cache.coupons.findIndex(c => c.id === coupon.id);
+  if (i >= 0) _cache.coupons[i] = coupon; else _cache.coupons.unshift(coupon);
+  dispatch();
+  fire('POST', '/coupons', coupon);
+  return _cache.coupons;
 }
 
-export function validateCoupon(code: string): { valid: boolean; discountPercent: number; coupon?: Coupon } {
-  const coupons = getCoupons();
-  const found = coupons.find((c) => c.code.toUpperCase() === code.trim().toUpperCase() && c.active);
-  if (found) {
-    return { valid: true, discountPercent: found.discountPercent, coupon: found };
+export async function validateCoupon(code: string): Promise<{ valid: boolean; discountPercent: number; coupon?: Coupon }> {
+  try {
+    return await api('POST', '/coupons/validate', { code });
+  } catch {
+    const f = _cache.coupons.find(c => c.code.toUpperCase() === code.trim().toUpperCase() && c.active);
+    return f ? { valid: true, discountPercent: f.discountPercent, coupon: f } : { valid: false, discountPercent: 0 };
   }
-  return { valid: false, discountPercent: 0 };
 }
 
+// ── Currency ─────────────────────────────────────────────────────
 export function getSelectedCurrency(): CurrencyCode {
-  if (typeof window === 'undefined') return 'USD';
-  const c = localStorage.getItem(KEYS.CURRENCY) as CurrencyCode;
-  return c || 'USD';
+  return _cache.currency;
 }
 
 export function setSelectedCurrency(currency: CurrencyCode): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(KEYS.CURRENCY, currency);
-  window.dispatchEvent(new Event('lura_storage_update'));
+  _cache.currency = currency;
+  dispatch();
+  fire('PUT', '/currency', { currency });
 }
 
+// ── Price Utilities (pure, no storage) ───────────────────────────
 export function formatPrice(priceUSD: number, currencyCode: CurrencyCode): string {
   const config = CURRENCIES[currencyCode] || CURRENCIES.USD;
   const converted = priceUSD * config.rate;
@@ -351,6 +247,7 @@ export function convertUSDToCurrency(priceUSD: number, currencyCode: CurrencyCod
   return priceUSD * config.rate;
 }
 
+// ── Schema Utilities (pure, no storage) ──────────────────────────
 export function generateGoogleSchema(params: {
   id: string;
   title: string;
@@ -366,10 +263,7 @@ export function generateGoogleSchema(params: {
     '@type': 'Book',
     name: params.title,
     description: params.description,
-    author: {
-      '@type': 'Person',
-      name: params.authorName,
-    },
+    author: { '@type': 'Person', name: params.authorName },
     image: params.coverImage,
     bookFormat: 'https://schema.org/EBook',
     offers: {
@@ -378,10 +272,7 @@ export function generateGoogleSchema(params: {
       priceCurrency: 'USD',
       availability: 'https://schema.org/InStock',
       url: `https://lura.to/b/${params.slug}`,
-      seller: {
-        '@type': 'Person',
-        name: params.authorName,
-      },
+      seller: { '@type': 'Person', name: params.authorName },
     },
   };
   return JSON.stringify(schemaObj, null, 2);
@@ -389,7 +280,6 @@ export function generateGoogleSchema(params: {
 
 export function injectGlobalSchema() {
   if (typeof document === 'undefined') return;
-
   let script = document.getElementById('lura-jsonld-schema') as HTMLScriptElement | null;
   if (!script) {
     script = document.createElement('script');
@@ -397,8 +287,7 @@ export function injectGlobalSchema() {
     script.type = 'application/ld+json';
     document.head.appendChild(script);
   }
-
-  const globalSchema = {
+  script.textContent = JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'Lura',
@@ -409,16 +298,12 @@ export function injectGlobalSchema() {
       target: 'https://lura.to/search?q={search_term_string}',
       'query-input': 'required name=search_term_string',
     },
-  };
-
-  script.textContent = JSON.stringify(globalSchema, null, 2);
+  }, null, 2);
 }
 
 export function injectBookSchema(book: EBook) {
   if (typeof document === 'undefined') return;
-
   document.title = `${book.title} by ${book.authorName} - Buy & Read | Lura`;
-
   let metaDesc = document.querySelector('meta[name="description"]');
   if (!metaDesc) {
     metaDesc = document.createElement('meta');
@@ -426,7 +311,6 @@ export function injectBookSchema(book: EBook) {
     document.head.appendChild(metaDesc);
   }
   metaDesc.setAttribute('content', book.seo.metaDescription || book.description);
-
   let script = document.getElementById('lura-book-schema') as HTMLScriptElement | null;
   if (!script) {
     script = document.createElement('script');
@@ -435,91 +319,50 @@ export function injectBookSchema(book: EBook) {
     document.head.appendChild(script);
   }
   script.textContent = book.seo.schemaMarkup || generateGoogleSchema({
-    id: book.id,
-    title: book.title,
-    subtitle: book.subtitle,
-    authorName: book.authorName,
-    description: book.description,
-    priceUSD: book.priceUSD,
-    coverImage: book.coverImage,
-    slug: book.slug,
+    id: book.id, title: book.title, subtitle: book.subtitle,
+    authorName: book.authorName, description: book.description,
+    priceUSD: book.priceUSD, coverImage: book.coverImage, slug: book.slug,
   });
 }
 
-// User Authentication State Management
-const DEFAULT_USER: UserAccount = {
-  id: 'usr_prosper_01',
-  name: 'Prosper Ozoya',
-  email: 'prosperozoya50@gmail.com',
-  role: 'creator',
-  handle: 'prosperozoya',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-  createdAt: '2026-01-10T10:00:00Z',
-};
-
+// ── Users ────────────────────────────────────────────────────────
 export function getCurrentUser(): UserAccount | null {
-  if (typeof window === 'undefined') return DEFAULT_USER;
-  const stored = localStorage.getItem(KEYS.USER);
-  if (!stored) {
-    localStorage.setItem(KEYS.USER, JSON.stringify(DEFAULT_USER));
-    return DEFAULT_USER;
-  }
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return DEFAULT_USER;
-  }
+  return _cache.currentUser;
 }
 
 export function setCurrentUser(user: UserAccount | null): void {
-  if (typeof window === 'undefined') return;
-  if (user) {
-    localStorage.setItem(KEYS.USER, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(KEYS.USER);
-  }
-  window.dispatchEvent(new Event('lura_storage_update'));
+  _cache.currentUser = user;
+  dispatch();
+  fire('PUT', '/user', { user });
 }
 
 export function getAllUsers(): UserAccount[] {
-  if (typeof window === 'undefined') return [DEFAULT_USER];
-  const stored = localStorage.getItem(KEYS.USERS_LIST);
-  if (!stored) {
-    const initList = [DEFAULT_USER];
-    localStorage.setItem(KEYS.USERS_LIST, JSON.stringify(initList));
-    return initList;
-  }
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return [DEFAULT_USER];
-  }
+  return _cache.users;
 }
 
 export function signInUser(email: string, _password?: string): { success: boolean; user?: UserAccount; error?: string } {
   const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) {
-    return { success: false, error: 'Please enter a valid email address.' };
-  }
+  if (!cleanEmail) return { success: false, error: 'Please enter a valid email address.' };
 
-  const users = getAllUsers();
-  let matched = users.find((u) => u.email.toLowerCase() === cleanEmail);
+  let matched = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
 
   if (!matched) {
     matched = {
       id: `usr_${Date.now()}`,
-      name: cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      name: cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       email: cleanEmail,
       role: 'creator',
       handle: cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
       avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80`,
       createdAt: new Date().toISOString(),
     };
-    users.push(matched);
-    localStorage.setItem(KEYS.USERS_LIST, JSON.stringify(users));
+    _cache.users.push(matched);
+    fire('POST', '/users', matched);
   }
 
-  setCurrentUser(matched);
+  _cache.currentUser = matched;
+  dispatch();
+  fire('PUT', '/user', { user: matched });
   return { success: true, user: matched };
 }
 
@@ -537,10 +380,11 @@ export function signUpUser(data: {
     return { success: false, error: 'Name and email are required to create your Lura account.' };
   }
 
-  const users = getAllUsers();
-  const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+  const existing = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
   if (existing) {
-    setCurrentUser(existing);
+    _cache.currentUser = existing;
+    dispatch();
+    fire('PUT', '/user', { user: existing });
     return { success: true, user: existing };
   }
 
@@ -555,21 +399,22 @@ export function signUpUser(data: {
     createdAt: new Date().toISOString(),
   };
 
-  users.push(newUser);
-  localStorage.setItem(KEYS.USERS_LIST, JSON.stringify(users));
-  setCurrentUser(newUser);
+  _cache.users.push(newUser);
+  _cache.currentUser = newUser;
 
   if (data.role === 'creator') {
-    updateAuthor({
-      name: cleanName,
-      email: cleanEmail,
-      handle: handleClean,
-    });
+    _cache.author = { ..._cache.author, name: cleanName, email: cleanEmail, handle: handleClean };
+    fire('PUT', '/author', _cache.author);
   }
 
+  dispatch();
+  fire('POST', '/users', newUser);
+  fire('PUT', '/user', { user: newUser });
   return { success: true, user: newUser };
 }
 
 export function signOutUser(): void {
-  setCurrentUser(null);
+  _cache.currentUser = null;
+  dispatch();
+  fire('DELETE', '/user');
 }

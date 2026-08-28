@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { BookOpen, ShoppingCart, Star, Eye } from 'lucide-react';
 import { EBook, CurrencyCode } from '../types';
-import { formatPrice } from '../services/storage';
+import { formatPrice, getLibraryBookIds } from '../services/storage';
 
 interface MyLibraryProps {
   books: EBook[];
@@ -19,7 +19,7 @@ export const MyLibrary: React.FC<MyLibraryProps> = ({
   onSelectBook,
 }) => {
   const libraryData = useMemo(() => {
-    const ids = JSON.parse(localStorage.getItem('lura_library_v1') || '[]') as string[];
+    const ids = getLibraryBookIds();
     return books.filter((b) => ids.includes(b.id));
   }, [books]);
 
