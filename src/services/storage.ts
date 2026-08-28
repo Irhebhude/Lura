@@ -325,6 +325,45 @@ export function injectBookSchema(book: EBook) {
   });
 }
 
+// ── Ebook Download ──────────────────────────────────────────────
+export function downloadEbook(book: EBook): void {
+  if (!book.ebookFileUrl) {
+    alert('No downloadable file available for this e-book.');
+    return;
+  }
+
+  const fileName = `${book.title.replace(/[^a-zA-Z0-9]/g, '_')}.${book.ebookFileType || 'pdf'}`;
+
+  // If it's a data URL (uploaded file), create a blob and trigger download
+  if (book.ebookFileUrl.startsWith('data:')) {
+    const [header, data] = book.ebookFileUrl.split(',');
+    const mimeType = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // If it's a regular URL, open in new tab with download attribute
+  const a = document.createElement('a');
+  a.href = book.ebookFileUrl;
+  a.download = fileName;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // ── Users ────────────────────────────────────────────────────────
 export function getCurrentUser(): UserAccount | null {
   return _cache.currentUser;

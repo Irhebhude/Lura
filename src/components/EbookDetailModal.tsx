@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { X, Star, ShoppingCart, BookOpen, Eye, Globe, Tag, ShieldCheck, Clock, Download, CheckCircle2 } from 'lucide-react';
 import { EBook, CurrencyCode } from '../types';
-import { formatPrice, getReviews } from '../services/storage';
+import { formatPrice, getReviews, downloadEbook } from '../services/storage';
 
 interface EbookDetailModalProps {
   book: EBook;
@@ -122,35 +122,47 @@ export const EbookDetailModal: React.FC<EbookDetailModalProps> = ({
               <span>256-bit encrypted • Instant delivery • 95% to creator</span>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2">
               {isPurchased ? (
-                <button
-                  onClick={() => onReadSample(book)}
-                  className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <BookOpen className="w-4 h-4" /> Read Full Book
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onReadSample(book)}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <BookOpen className="w-4 h-4" /> Read Full Book
+                  </button>
+                  {book.ebookFileUrl && (
+                    <button
+                      onClick={() => downloadEbook(book)}
+                      className="px-4 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Download className="w-4 h-4" /> Download
+                    </button>
+                  )}
+                </div>
               ) : (
                 <button
                   onClick={() => onBuy(book)}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
                 >
                   <ShoppingCart className="w-4 h-4" /> Buy Now
                 </button>
               )}
-              <button
-                onClick={() => onReadSample(book)}
-                className="px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center gap-2 transition-colors"
-              >
-                <Eye className="w-4 h-4" /> Sample
-              </button>
-              <button
-                onClick={() => onOpenGoogleSeo(book)}
-                className="px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center gap-2 transition-colors"
-                title="SEO Details"
-              >
-                <Globe className="w-4 h-4" />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onReadSample(book)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Eye className="w-4 h-4" /> Sample
+                </button>
+                <button
+                  onClick={() => onOpenGoogleSeo(book)}
+                  className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+                  title="SEO Details"
+                >
+                  <Globe className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
 

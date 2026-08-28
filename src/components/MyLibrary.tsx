@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { BookOpen, ShoppingCart, Star, Eye } from 'lucide-react';
+import { BookOpen, ShoppingCart, Star, Eye, Download } from 'lucide-react';
 import { EBook, CurrencyCode } from '../types';
-import { formatPrice, getLibraryBookIds } from '../services/storage';
+import { formatPrice, getLibraryBookIds, downloadEbook } from '../services/storage';
 
 interface MyLibraryProps {
   books: EBook[];
@@ -90,6 +90,15 @@ export const MyLibrary: React.FC<MyLibraryProps> = ({
                   >
                     <BookOpen className="w-3 h-3" /> Read Now
                   </button>
+                  {book.ebookFileUrl && (
+                    <button
+                      onClick={() => downloadEbook(book)}
+                      className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                      title="Download E-Book"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => onOpenReader(book)}
                     className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"

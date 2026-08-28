@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { X, BookOpen, ArrowLeft, ArrowRight, ShoppingCart, Lock, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, BookOpen, ArrowLeft, ArrowRight, ShoppingCart, Lock, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { EBook } from '../types';
+import { downloadEbook } from '../services/storage';
 
 interface WebReaderModalProps {
   book: EBook;
@@ -45,6 +46,15 @@ export const WebReaderModal: React.FC<WebReaderModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isPurchased && (
+              <button
+                onClick={() => downloadEbook(book)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors"
+                title="Download ebook"
+              >
+                <Download className="w-3 h-3" /> Download
+              </button>
+            )}
             {!isPurchased && (
               <button
                 onClick={onUnlockFullBook}

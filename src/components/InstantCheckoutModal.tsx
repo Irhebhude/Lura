@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, CreditCard, ShieldCheck, CheckCircle2, BookOpen, ArrowRight } from 'lucide-react';
+import { X, CreditCard, ShieldCheck, CheckCircle2, BookOpen, ArrowRight, Download } from 'lucide-react';
 import { EBook, CurrencyCode, Order } from '../types';
-import { formatPrice, saveOrder, getCurrentUser } from '../services/storage';
+import { formatPrice, saveOrder, getCurrentUser, downloadEbook } from '../services/storage';
 
 interface InstantCheckoutModalProps {
   book: EBook;
@@ -176,19 +176,29 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
               {order?.buyerEmail && `A download link has been sent to ${order.buyerEmail}. `}
               You can start reading immediately.
             </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => onOpenReader(book)}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
-              >
-                <BookOpen className="w-4 h-4" /> Read Now
-              </button>
-              <button
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium transition-colors"
-              >
-                Close
-              </button>
+            <div className="flex flex-col gap-2">
+              {book.ebookFileUrl && (
+                <button
+                  onClick={() => downloadEbook(book)}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Download className="w-4 h-4" /> Download E-Book
+                </button>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onOpenReader(book)}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <BookOpen className="w-4 h-4" /> Read Now
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
