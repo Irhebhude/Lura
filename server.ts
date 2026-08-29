@@ -401,6 +401,21 @@ app.get('/api/banks', async (req, res) => {
         { id: 12, name: 'KCB Bank Kenya', code: 'KCBLKENA', country: 'kenya', currency: 'KES', active: true },
         { id: 13, name: 'Equity Bank Kenya', code: 'EQBLKENA', country: 'kenya', currency: 'KES', active: true },
         { id: 14, name: 'Cooperative Bank Kenya', code: 'KCOOKE', country: 'kenya', currency: 'KES', active: true },
+        // USD/EUR/GBP/CAD/AUD: Paystack supports these for card/bank payments
+        // but bank list for transfers is limited. Include common international options.
+        { id: 20, name: 'Chase Bank (US)', code: 'CHASUS33', country: 'united-states', currency: 'USD', active: true },
+        { id: 21, name: 'Bank of America', code: 'BOFAUS3N', country: 'united-states', currency: 'USD', active: true },
+        { id: 22, name: 'Citibank (US)', code: 'CITIUS33', country: 'united-states', currency: 'USD', active: true },
+        { id: 23, name: 'Barclays (UK)', code: 'BARCGB22', country: 'united-kingdom', currency: 'GBP', active: true },
+        { id: 24, name: 'HSBC (UK)', code: 'HSBCGB2L', country: 'united-kingdom', currency: 'GBP', active: true },
+        { id: 25, name: 'Revolut (UK)', code: 'REVOGB21', country: 'united-kingdom', currency: 'GBP', active: true },
+        { id: 26, name: 'Deutsche Bank (DE)', code: 'DEUTDEFF', country: 'germany', currency: 'EUR', active: true },
+        { id: 27, name: 'BNP Paribas (FR)', code: 'BNPAFRPP', country: 'france', currency: 'EUR', active: true },
+        { id: 28, name: 'ING (NL)', code: 'INGBNL2A', country: 'netherlands', currency: 'EUR', active: true },
+        { id: 29, name: 'Royal Bank of Canada', code: 'ROYCCAT2', country: 'canada', currency: 'CAD', active: true },
+        { id: 30, name: 'TD Canada Trust', code: 'TDOMCATTT', country: 'canada', currency: 'CAD', active: true },
+        { id: 31, name: 'Commonwealth Bank (AU)', code: 'CTBAAU2S', country: 'australia', currency: 'AUD', active: true },
+        { id: 32, name: 'Westpac (AU)', code: 'WPACAU2S', country: 'australia', currency: 'AUD', active: true },
       ].filter(b => !currency || b.currency === currency));
     }
     const country = currency ? countryForCurrency(currency as string) : undefined;

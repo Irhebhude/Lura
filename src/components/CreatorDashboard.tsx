@@ -41,6 +41,8 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   const [showBankForm, setShowBankForm] = useState(false);
   const [bankCurrency, setBankCurrency] = useState<CurrencyCode>(author.bankDetails?.currency as CurrencyCode || currency || 'NGN');
   const [bankList, setBankList] = useState<BankOption[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksLoaded, setBanksLoaded] = useState(false);
   const [bankForm, setBankForm] = useState({
     bankName: author.bankDetails?.bankName || '',
     accountNumber: author.bankDetails?.accountNumber || '',
@@ -82,7 +84,19 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   // Load banks when currency changes or bank form opens
   useEffect(() => {
     if (showBankForm && bankCurrency) {
-      fetchBanksForCurrency(bankCurrency).then(banks => setBankList(banks));
+      setBanksLoading(true);
+      setBanksLoaded(false);
+      setBankList([]);
+      fetchBanksForCurrency(bankCurrency)
+        .then(banks => {
+          setBankList(banks);
+          setBanksLoaded(true);
+        })
+        .catch(() => {
+          setBankList([]);
+          setBanksLoaded(true);
+        })
+        .finally(() => setBanksLoading(false));
     }
   }, [showBankForm, bankCurrency]);
 
@@ -340,8 +354,15 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                     <option key={b.code} value={b.name} className="bg-neutral-900">{b.name}</option>
                   ))}
                 </select>
-                {bankList.length === 0 && bankCurrency && (
+                {bankList.length === 0 && banksLoading && (
                   <p className="text-[9px] text-neutral-500 mt-1">Loading banks for {bankCurrency}...</p>
+                )}
+                {bankList.length === 0 && !banksLoading && banksLoaded && (
+                  <p className="text-[9px] text-amber-400 mt-1">
+                    {['EUR', 'USD', 'GBP', 'CAD', 'AUD'].includes(bankCurrency)
+                      ? `Direct bank transfers not available for ${bankCurrency}. Switch to NGN, GHS, or KES for bank payouts.`
+                      : `No banks found for ${bankCurrency}. Try a different currency.`}
+                  </p>
                 )}
               </div>
 
