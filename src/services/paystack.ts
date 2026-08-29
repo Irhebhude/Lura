@@ -2,7 +2,6 @@ import crypto from 'crypto';
 
 // ── Configuration ────────────────────────────────────────────────
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
-const PAYSTACK_WEBHOOK_SECRET = process.env.PAYSTACK_WEBHOOK_SECRET || '';
 
 export function isPaystackConfigured(): boolean {
   return !!PAYSTACK_SECRET;
@@ -250,12 +249,14 @@ export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string,
 ): boolean {
-  if (!PAYSTACK_WEBHOOK_SECRET) {
-    console.error('[paystack] WEBHOOK_SECRET not configured');
+  if (!PAYSTACK_SECRET) {
+    console.error('[paystack] PAYSTACK_SECRET_KEY not configured — cannot verify webhook');
     return false;
   }
+  // Paystack signs webhooks using the Secret Key itself (HMAC-SHA512)
+  // There is no separate webhook secret — see https://paystack.com/docs/payments/webhooks/
   const hash = crypto
-    .createHmac('sha512', PAYSTACK_WEBHOOK_SECRET)
+    .createHmac('sha512', PAYSTACK_SECRET)
     .update(typeof payload === 'string' ? payload : payload.toString())
     .digest('hex');
   return hash === signature;
