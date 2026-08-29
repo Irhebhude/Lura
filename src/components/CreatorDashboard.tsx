@@ -192,10 +192,9 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   };
 
   const withdrawalFeeNgn = platformConfig.withdrawalFee; // 50 NGN
-  // Convert NGN fee to selected currency: NGN→USD→target
-  const ngnRate = CURRENCIES.NGN?.rate || 1550;
-  const targetRate = CURRENCIES[currency]?.rate || 1;
-  const withdrawalFeeConverted = (withdrawalFeeNgn / ngnRate) * targetRate;
+  // Fee is already in target currency (NGN→USD→target). formatPrice expects USD, so
+  // we store the USD equivalent and let formatPrice do the single conversion.
+  const withdrawalFeeUSD = withdrawalFeeNgn / (CURRENCIES.NGN?.rate || 1550);
   const withdrawAmountNgn = parseFloat(withdrawAmount) || 0;
   const withdrawNetNgn = withdrawAmountNgn - withdrawalFeeNgn;
 
@@ -236,7 +235,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       <div className="mb-6 p-3 rounded-xl bg-neutral-900 border border-neutral-800/60 flex flex-wrap gap-4 text-[11px] text-neutral-400">
         <span>Platform commission: <strong className="text-white">{platformConfig.commissionPercent}%</strong></span>
         <span>•</span>
-        <span>Withdrawal fee: <strong className="text-white">{formatPrice(withdrawalFeeConverted, currency)}</strong></span>
+        <span>Withdrawal fee: <strong className="text-white">{formatPrice(withdrawalFeeUSD, currency)}</strong></span>
         <span>•</span>
         <span>Total commission paid: <strong className="text-amber-400">{formatPrice(totalCommissionPaidNgn / (CURRENCIES[currency]?.rate || 1), currency)}</strong></span>
         <span>•</span>
@@ -542,7 +541,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-neutral-400">Withdrawal Fee</span>
-                <span className="text-rose-400">-{formatPrice(withdrawalFeeConverted, currency)}</span>
+                <span className="text-rose-400">-{formatPrice(withdrawalFeeUSD, currency)}</span>
               </div>
               <div className="border-t border-neutral-800/60 pt-2 flex justify-between text-xs font-bold">
                 <span className="text-white">You Will Receive</span>
