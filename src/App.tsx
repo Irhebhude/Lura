@@ -13,6 +13,7 @@ import { AuthModal } from './components/AuthModal';
 import { EBook, CurrencyCode, AuthorProfile, Order, UserAccount } from './types';
 import {
   initializeStorage,
+  restoreSession,
   getEbooks,
   getAuthor,
   getLibraryBookIds,
@@ -55,6 +56,7 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       await initializeStorage();
+      await restoreSession();
       syncState();
     };
     init();

@@ -485,24 +485,31 @@ export async function signInUser(email: string, password?: string): Promise<{ su
   if (!cleanEmail) return { success: false, error: 'Please enter a valid email address.' };
   if (!password) return { success: false, error: 'Please enter your password.' };
 
-  const matched = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
-  if (!matched) {
-    return { success: false, error: 'No account found with this email. Please sign up first.' };
+  // Server-side authentication
+  try {
+    const result = await api<{ success: boolean; user?: UserAccount; error?: string }>('POST', '/auth/signin', { email: cleanEmail, password });
+    if (result.success && result.user) {
+      _cache.currentUser = result.user;
+      // Also update in users array
+      const ui = _cache.users.findIndex(u => u.id === result.user!.id);
+      if (ui >= 0) _cache.users[ui] = result.user!; else _cache.users.push(result.user!);
+      // Persist session to localStorage so it survives page reload
+      try { localStorage.setItem('lura_current_user_id', result.user.id); } catch {}
+      dispatch();
+    }
+    return result;
+  } catch {
+    // Fallback: client-side check against cached users
+    const matched = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (!matched) return { success: false, error: 'No account found with this email. Please sign up first.' };
+    if (!matched.passwordHash) return { success: false, error: 'This account was created without a password.' };
+    const inputHash = await hashPassword(password);
+    if (inputHash !== matched.passwordHash) return { success: false, error: 'Incorrect password. Please try again.' };
+    _cache.currentUser = matched;
+    try { localStorage.setItem('lura_current_user_id', matched.id); } catch {}
+    dispatch();
+    return { success: true, user: matched };
   }
-
-  if (!matched.passwordHash) {
-    return { success: false, error: 'This account was created without a password. Please reset your password or create a new account.' };
-  }
-
-  const inputHash = await hashPassword(password);
-  if (inputHash !== matched.passwordHash) {
-    return { success: false, error: 'Incorrect password. Please try again.' };
-  }
-
-  _cache.currentUser = matched;
-  dispatch();
-  fire('PUT', '/user', { user: matched });
-  return { success: true, user: matched };
 }
 
 export async function signUpUser(data: {
@@ -522,46 +529,94 @@ export async function signUpUser(data: {
     return { success: false, error: 'Password must be at least 6 characters.' };
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(cleanEmail)) {
-    return { success: false, error: 'Please enter a valid email address.' };
+  // Server-side signup
+  try {
+    const result = await api<{ success: boolean; user?: UserAccount; error?: string }>('POST', '/auth/signup', {
+      name: cleanName,
+      email: cleanEmail,
+      password: data.password,
+      role: data.role,
+      handle: data.handle,
+    });
+    if (result.success && result.user) {
+      _cache.users.push(result.user);
+      _cache.currentUser = result.user;
+      try { localStorage.setItem('lura_current_user_id', result.user.id); } catch {}
+      dispatch();
+    }
+    return result;
+  } catch {
+    // Fallback: client-side signup
+    const existing = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (existing) return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    const handleClean = (data.handle || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')) || `user${Date.now().toString().slice(-4)}`;
+    const passwordHash = await hashPassword(data.password);
+    const newUser: UserAccount = {
+      id: `usr_${Date.now()}`,
+      name: cleanName,
+      email: cleanEmail,
+      role: data.role || 'creator',
+      handle: handleClean,
+      avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80`,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+    _cache.users.push(newUser);
+    _cache.currentUser = newUser;
+    try { localStorage.setItem('lura_current_user_id', newUser.id); } catch {}
+    dispatch();
+    fire('POST', '/users', newUser);
+    fire('PUT', '/user', { user: newUser });
+    return { success: true, user: newUser };
   }
-
-  const existing = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
-  if (existing) {
-    return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
-  }
-
-  const handleClean = (data.handle || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')) || `user${Date.now().toString().slice(-4)}`;
-  const passwordHash = await hashPassword(data.password);
-
-  const newUser: UserAccount = {
-    id: `usr_${Date.now()}`,
-    name: cleanName,
-    email: cleanEmail,
-    role: data.role || 'creator',
-    handle: handleClean,
-    avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80`,
-    passwordHash,
-    createdAt: new Date().toISOString(),
-  };
-
-  _cache.users.push(newUser);
-  _cache.currentUser = newUser;
-
-  if (data.role === 'creator') {
-    _cache.author = { ..._cache.author, name: cleanName, email: cleanEmail, handle: handleClean };
-    fire('PUT', '/author', _cache.author);
-  }
-
-  dispatch();
-  fire('POST', '/users', newUser);
-  fire('PUT', '/user', { user: newUser });
-  return { success: true, user: newUser };
 }
 
 export function signOutUser(): void {
   _cache.currentUser = null;
+  try { localStorage.removeItem('lura_current_user_id'); } catch {}
   dispatch();
   fire('DELETE', '/user');
+}
+
+// ── Forgot Password ─────────────────────────────────────────────
+export async function requestPasswordReset(email: string): Promise<{ success: boolean; message: string; resetToken?: string }> {
+  try {
+    const result = await api<{ success: boolean; message: string; resetToken?: string }>('POST', '/auth/forgot-password', { email });
+    return result;
+  } catch {
+    return { success: false, message: 'Network error. Please try again.' };
+  }
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const result = await api<{ success: boolean; message: string }>('POST', '/auth/reset-password', { token, newPassword });
+    return result;
+  } catch {
+    return { success: false, message: 'Network error. Please try again.' };
+  }
+}
+
+// ── Session Restore ─────────────────────────────────────────────
+export async function restoreSession(): Promise<UserAccount | null> {
+  try {
+    const savedId = localStorage.getItem('lura_current_user_id');
+    if (savedId) {
+      // Check server for currentUser first
+      const serverUser = await api<UserAccount | null>('GET', '/user');
+      if (serverUser && serverUser.id === savedId) {
+        _cache.currentUser = serverUser;
+        dispatch();
+        return serverUser;
+      }
+      // Fallback: find in cached users
+      const user = _cache.users.find(u => u.id === savedId);
+      if (user) {
+        _cache.currentUser = user;
+        dispatch();
+        return user;
+      }
+    }
+  } catch {}
+  return null;
 }

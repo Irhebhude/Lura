@@ -3,7 +3,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { INITIAL_EBOOKS, INITIAL_AUTHOR, INITIAL_REVIEWS, INITIAL_COUPONS, CURRENCIES } from './src/data/initialData';
-import type { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, UserAccount, LedgerEntry, PlatformConfig } from './src/types';
+import type { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, UserAccount, LedgerEntry, PlatformConfig, PasswordResetToken } from './src/types';
+import { createHash, randomBytes } from 'crypto';
 import {
   isPaystackConfigured,
   initializePayment,
@@ -52,6 +53,7 @@ interface DB {
   ledger: LedgerEntry[];
   config: PlatformConfig;
   webhookEvents: Array<{ id: string; event: string; reference: string; payload: unknown; processedAt: string }>;
+  passwordResetTokens: PasswordResetToken[];
 }
 
 function defaultDB(): DB {
@@ -69,7 +71,13 @@ function defaultDB(): DB {
     ledger: [],
     config: DEFAULT_CONFIG,
     webhookEvents: [],
+    passwordResetTokens: [],
   };
+}
+
+// ── Password hashing (server-side) ──────────────────────────────
+function hashPasswordServer(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
 }
 
 function loadDB(): DB {
@@ -83,6 +91,7 @@ function loadDB(): DB {
       ledger: raw.ledger || [],
       config: { ...DEFAULT_CONFIG, ...(raw.config || {}) },
       webhookEvents: raw.webhookEvents || [],
+      passwordResetTokens: raw.passwordResetTokens || [],
     };
   }
   catch { const db = defaultDB(); saveDB(db); return db; }
@@ -1000,11 +1009,196 @@ app.get('/api/user', (_req, res) => res.json(db.currentUser));
 app.put('/api/user', (req, res) => {
   db.currentUser = req.body.user || null;
   saveDB(db); res.json(db.currentUser);
+});app.delete('/api/user', (_req, res) => {
+  db.currentUser = null;
+  saveDB(db);
+  res.json(null);
 });
 
-app.delete('/api/user', (_req, res) => {
-  db.currentUser = null;
-  saveDB(db); res.json(null);
+// ══════════════════════════════════════════════════════════════════
+// SERVER-SIDE AUTH ENDPOINTS
+// ══════════════════════════════════════════════════════════════════
+
+// Sign Up (server-side)
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { name, email, password, role, handle } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim();
+
+    if (!cleanEmail || !cleanName) {
+      return res.status(400).json({ success: false, error: 'Name and email are required.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters.' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+
+    const existing = db.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'An account with this email already exists. Please sign in instead.' });
+    }
+
+    const handleClean = (handle || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')) || `user${Date.now().toString().slice(-4)}`;
+    const passwordHash = hashPasswordServer(password);
+
+    const newUser: UserAccount = {
+      id: `usr_${Date.now()}`,
+      name: cleanName,
+      email: cleanEmail,
+      role: (role as 'creator' | 'reader') || 'creator',
+      handle: handleClean,
+      avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80`,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+
+    db.users.push(newUser);
+    db.currentUser = newUser;
+
+    if (role === 'creator') {
+      db.author = { ...db.author, name: cleanName, email: cleanEmail, handle: handleClean };
+    }
+
+    saveDB(db);
+    res.json({ success: true, user: newUser });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Signup failed';
+    console.error('[auth/signup]', msg);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// Sign In (server-side)
+app.post('/api/auth/signin', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'Please enter your password.' });
+    }
+
+    const matched = db.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (!matched) {
+      return res.status(404).json({ success: false, error: 'No account found with this email. Please sign up first.' });
+    }
+
+    if (!matched.passwordHash) {
+      return res.status(400).json({ success: false, error: 'This account was created without a password. Please reset your password or create a new account.' });
+    }
+
+    const inputHash = hashPasswordServer(password);
+    if (inputHash !== matched.passwordHash) {
+      return res.status(401).json({ success: false, error: 'Incorrect password. Please try again.' });
+    }
+
+    // Update currentUser
+    db.currentUser = matched;
+    saveDB(db);
+
+    res.json({ success: true, user: matched });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Sign in failed';
+    console.error('[auth/signin]', msg);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// Forgot Password — generates a reset token
+app.post('/api/auth/forgot-password', (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ success: false, error: 'Please enter your email address.' });
+    }
+
+    const matched = db.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (!matched) {
+      // Don't reveal whether the email exists
+      return res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
+    }
+
+    // Invalidate any existing tokens for this email
+    db.passwordResetTokens.forEach(t => {
+      if (t.email === cleanEmail && !t.used) t.used = true;
+    });
+
+    // Generate token
+    const token = randomBytes(32).toString('hex');
+    const resetToken: PasswordResetToken = {
+      id: `rst_${Date.now()}`,
+      email: cleanEmail,
+      token,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+      used: false,
+    };
+    db.passwordResetTokens.push(resetToken);
+    saveDB(db);
+
+    // In production, send email with the token. For now, return it so the UI can use it.
+    console.log(`[auth/forgot-password] Reset token for ${cleanEmail}: ${token}`);
+    res.json({
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+      // Dev/sandbox mode: return the token so UI can auto-fill
+      resetToken: token,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Password reset failed';
+    console.error('[auth/forgot-password]', msg);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// Reset Password — uses the token to set a new password
+app.post('/api/auth/reset-password', (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Token and new password are required.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters.' });
+    }
+
+    const resetEntry = db.passwordResetTokens.find(t => t.token === token && !t.used);
+    if (!resetEntry) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired reset token. Please request a new one.' });
+    }
+
+    if (new Date(resetEntry.expiresAt) < new Date()) {
+      resetEntry.used = true;
+      saveDB(db);
+      return res.status(400).json({ success: false, error: 'Reset token has expired. Please request a new one.' });
+    }
+
+    // Find user and update password hash
+    const user = db.users.find(u => u.email.toLowerCase() === resetEntry.email.toLowerCase());
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    user.passwordHash = hashPasswordServer(newPassword);
+    resetEntry.used = true;
+    saveDB(db);
+
+    res.json({ success: true, message: 'Password reset successful. You can now sign in with your new password.' });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Password reset failed';
+    console.error('[auth/reset-password]', msg);
+    res.status(500).json({ success: false, error: msg });
+  }
 });
 
 // ── Frontend serving ─────────────────────────────────────────────

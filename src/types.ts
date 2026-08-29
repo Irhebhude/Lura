@@ -189,6 +189,14 @@ export interface PlatformConfig {
   minEbookPrice: number;
 }
 
+export interface PasswordResetToken {
+  id: string;
+  email: string;
+  token: string;
+  expiresAt: string;
+  used: boolean;
+}
+
 export interface CurrencyConfig {
   code: CurrencyCode;
   symbol: string;
