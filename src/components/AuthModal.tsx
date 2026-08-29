@@ -28,15 +28,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
     setLoading(true);
 
-    setTimeout(() => {
+    try {
       if (mode === 'signin') {
-        const result = signInUser(email, password);
+        const result = await signInUser(email, password);
         if (result.success && result.user) {
           setSuccessMsg(`Welcome back, ${result.user.name}!`);
           setTimeout(() => {
@@ -44,10 +44,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onClose();
           }, 600);
         } else {
-          setError(result.error || 'Failed to sign in. Please verify your email.');
+          setError(result.error || 'Failed to sign in. Please verify your credentials.');
         }
       } else {
-        const result = signUpUser({
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters.');
+          setLoading(false);
+          return;
+        }
+        const result = await signUpUser({
           name,
           email,
           password,
@@ -64,8 +69,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setError(result.error || 'Could not create account. Please check your details.');
         }
       }
-      setLoading(false);
-    }, 400);
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+    }
+    setLoading(false);
   };
 
   return (
@@ -243,6 +250,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-xs font-medium text-neutral-300">Password</label>
+              {mode === 'signup' && password.length > 0 && password.length < 6 && (
+                <span className="text-[11px] text-rose-400">At least 6 characters</span>
+              )}
               {mode === 'signin' && (
                 <span className="text-[11px] text-indigo-400 hover:underline cursor-pointer">Forgot?</span>
               )}

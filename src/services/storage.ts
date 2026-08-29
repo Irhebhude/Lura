@@ -1,6 +1,15 @@
 import { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, BankDetails, UserAccount } from '../types';
 import { INITIAL_EBOOKS, INITIAL_AUTHOR, INITIAL_REVIEWS, INITIAL_COUPONS, CURRENCIES } from '../data/initialData';
 
+// ── Password Hashing ────────────────────────────────────────────
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const SUPPORTED_BANKS = [
   { name: 'Access Bank', code: '044', type: 'NGN' },
   { name: 'Guaranty Trust Bank (GTBank)', code: '058', type: 'NGN' },
@@ -379,24 +388,23 @@ export function getAllUsers(): UserAccount[] {
   return _cache.users;
 }
 
-export function signInUser(email: string, _password?: string): { success: boolean; user?: UserAccount; error?: string } {
+export async function signInUser(email: string, password?: string): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) return { success: false, error: 'Please enter a valid email address.' };
+  if (!password) return { success: false, error: 'Please enter your password.' };
 
-  let matched = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
-
+  const matched = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
   if (!matched) {
-    matched = {
-      id: `usr_${Date.now()}`,
-      name: cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      email: cleanEmail,
-      role: 'creator',
-      handle: cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
-      avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80`,
-      createdAt: new Date().toISOString(),
-    };
-    _cache.users.push(matched);
-    fire('POST', '/users', matched);
+    return { success: false, error: 'No account found with this email. Please sign up first.' };
+  }
+
+  if (!matched.passwordHash) {
+    return { success: false, error: 'This account was created without a password. Please reset your password or create a new account.' };
+  }
+
+  const inputHash = await hashPassword(password);
+  if (inputHash !== matched.passwordHash) {
+    return { success: false, error: 'Incorrect password. Please try again.' };
   }
 
   _cache.currentUser = matched;
@@ -405,29 +413,36 @@ export function signInUser(email: string, _password?: string): { success: boolea
   return { success: true, user: matched };
 }
 
-export function signUpUser(data: {
+export async function signUpUser(data: {
   name: string;
   email: string;
   password?: string;
   role: 'creator' | 'reader';
   handle?: string;
-}): { success: boolean; user?: UserAccount; error?: string } {
+}): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
   const cleanEmail = data.email.trim().toLowerCase();
   const cleanName = data.name.trim();
 
   if (!cleanEmail || !cleanName) {
     return { success: false, error: 'Name and email are required to create your Lura account.' };
   }
+  if (!data.password || data.password.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters.' };
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
 
   const existing = _cache.users.find(u => u.email.toLowerCase() === cleanEmail);
   if (existing) {
-    _cache.currentUser = existing;
-    dispatch();
-    fire('PUT', '/user', { user: existing });
-    return { success: true, user: existing };
+    return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
   }
 
   const handleClean = (data.handle || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')) || `user${Date.now().toString().slice(-4)}`;
+  const passwordHash = await hashPassword(data.password);
+
   const newUser: UserAccount = {
     id: `usr_${Date.now()}`,
     name: cleanName,
@@ -435,6 +450,7 @@ export function signUpUser(data: {
     role: data.role || 'creator',
     handle: handleClean,
     avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80`,
+    passwordHash,
     createdAt: new Date().toISOString(),
   };
 

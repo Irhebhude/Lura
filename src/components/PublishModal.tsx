@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, BookOpen, Sparkles, ArrowRight, CheckCircle2, AlertCircle, FileText, Link, CloudUpload } from 'lucide-react';
+import { X, Upload, BookOpen, Sparkles, ArrowRight, CheckCircle2, AlertCircle, FileText, Link, CloudUpload, ImageIcon } from 'lucide-react';
 import { EBook, CurrencyCode } from '../types';
 import { saveEbook, getAuthor } from '../services/storage';
 
@@ -19,6 +19,9 @@ export const PublishModal: React.FC<PublishModalProps> = ({ currency, onClose, o
   const [language, setLanguage] = useState('English');
   const [pagesCount, setPagesCount] = useState('');
   const [coverImage, setCoverImage] = useState('');
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [coverUploadMethod, setCoverUploadMethod] = useState<'url' | 'file'>('url');
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
   const [ebookFileUrl, setEbookFileUrl] = useState('');
   const [ebookFile, setEbookFile] = useState<File | null>(null);
   const [ebookFileType, setEbookFileType] = useState('');
@@ -370,14 +373,105 @@ export const PublishModal: React.FC<PublishModalProps> = ({ currency, onClose, o
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-neutral-300 mb-1">Cover Image URL</label>
-            <input
-              type="url"
-              value={coverImage}
-              onChange={(e) => setCoverImage(e.target.value)}
-              placeholder="https://... (optional, a default will be used)"
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            />
+            <label className="block text-xs font-medium text-neutral-300 mb-2">Cover Image</label>
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setCoverUploadMethod('url')}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border ${
+                  coverUploadMethod === 'url'
+                    ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300'
+                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Link className="w-3.5 h-3.5" /> Image URL
+              </button>
+              <button
+                type="button"
+                onClick={() => setCoverUploadMethod('file')}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border ${
+                  coverUploadMethod === 'file'
+                    ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300'
+                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" /> Upload File
+              </button>
+            </div>
+
+            {coverUploadMethod === 'url' ? (
+              <input
+                type="url"
+                value={coverImage}
+                onChange={(e) => setCoverImage(e.target.value)}
+                placeholder="https://... (optional, a default will be used)"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            ) : (
+              <div
+                onDragOver={(e) => { e.preventDefault(); }}
+                onClick={() => coverFileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                  coverImageFile
+                    ? 'border-emerald-500/50 bg-emerald-500/5'
+                    : 'border-neutral-700 hover:border-neutral-600 bg-neutral-950'
+                }`}
+              >
+                <input
+                  ref={coverFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (!file.type.startsWith('image/')) {
+                        setError('Please select an image file.');
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setError('Cover image must be under 5MB.');
+                        return;
+                      }
+                      setCoverImageFile(file);
+                      const reader = new FileReader();
+                      reader.onload = () => setCoverImage(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                {coverImageFile ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <img src={coverImage} alt="Cover preview" className="w-12 h-16 rounded-lg object-cover" />
+                    <div className="text-left">
+                      <p className="text-xs font-medium text-white">{coverImageFile.name}</p>
+                      <p className="text-[10px] text-neutral-400">{(coverImageFile.size / 1024).toFixed(0)} KB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setCoverImageFile(null); setCoverImage(''); }}
+                      className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <ImageIcon className="w-8 h-8 text-neutral-600 mx-auto mb-1" />
+                    <p className="text-xs text-neutral-300">Drop cover image or click to browse</p>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">JPG, PNG, WebP up to 5MB</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Cover preview for URL mode */}
+            {coverUploadMethod === 'url' && coverImage && (
+              <div className="mt-2 flex items-center gap-3 p-2 rounded-lg bg-neutral-950 border border-neutral-800/40">
+                <img src={coverImage} alt="Cover preview" className="w-10 h-14 rounded-md object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                <span className="text-[10px] text-emerald-400">Preview loaded</span>
+              </div>
+            )}
           </div>
 
           <div className="sticky bottom-0 bg-neutral-900 pt-3 pb-1 -mx-4 sm:-mx-6 px-4 sm:px-6 border-t border-neutral-800/60">

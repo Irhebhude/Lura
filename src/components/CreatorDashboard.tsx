@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   TrendingUp, DollarSign, BookOpen, Eye, ShoppingCart, PlusCircle,
-  Globe, ArrowUpRight, Wallet, BarChart3, Users,
+  Globe, ArrowUpRight, Wallet, BarChart3, Users, Building2, CheckCircle2, AlertCircle, Pencil,
 } from 'lucide-react';
 import { EBook, CurrencyCode } from '../types';
-import { formatPrice, getAuthor, getOrders, getWithdrawals, requestWithdrawal } from '../services/storage';
+import { formatPrice, getAuthor, getOrders, getWithdrawals, requestWithdrawal, updateBankDetails, SUPPORTED_BANKS } from '../services/storage';
 import { CURRENCIES } from '../data/initialData';
 
 interface CreatorDashboardProps {
@@ -27,14 +27,42 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   const author = useMemo(() => getAuthor(), [books]);
   const orders = useMemo(() => getOrders(), [books]);
   const withdrawals = useMemo(() => getWithdrawals(), []);
-  const [withdrawAmount, setWithdrawAmount] = React.useState('');
-  const [withdrawMsg, setWithdrawMsg] = React.useState<string | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null);
+  const [showBankForm, setShowBankForm] = useState(false);
+  const [bankForm, setBankForm] = useState({
+    bankName: author.bankDetails?.bankName || '',
+    accountNumber: author.bankDetails?.accountNumber || '',
+    accountName: author.bankDetails?.accountName || author.name || '',
+    bankCode: author.bankDetails?.bankCode || '',
+  });
+  const [bankMsg, setBankMsg] = useState<string | null>(null);
 
   const totalSales = author.totalSales || 0;
   const totalRevenue = author.totalRevenueUSD || 0;
   const payoutBalance = author.payoutBalanceUSD || 0;
   const creatorBooks = books.filter((b) => b.authorId === author.id);
   const recentOrders = orders.slice(0, 5);
+
+  const handleSaveBankDetails = () => {
+    if (!bankForm.bankName || !bankForm.accountNumber) {
+      setBankMsg('Bank name and account number are required.');
+      return;
+    }
+    if (bankForm.accountNumber.length < 8) {
+      setBankMsg('Account number must be at least 8 digits.');
+      return;
+    }
+    updateBankDetails({
+      bankName: bankForm.bankName,
+      accountNumber: bankForm.accountNumber,
+      accountName: bankForm.accountName || author.name,
+      bankCode: bankForm.bankCode,
+      currency: 'NGN',
+    });
+    setBankMsg('Bank details saved successfully!');
+    setShowBankForm(false);
+  };
 
   const handleWithdraw = async () => {
     const amt = parseFloat(withdrawAmount);
@@ -91,6 +119,113 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
             <p className="text-2xl font-bold text-white">{formatPrice(payoutBalance, currency)}</p>
             <p className="text-[10px] text-neutral-500 mt-1">95% creator payout rate • Instant processing</p>
           </div>
+
+          {/* Bank Details Section */}
+          {!author.bankDetails?.accountNumber && !showBankForm && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-amber-300">Add bank details to withdraw</p>
+                  <p className="text-[10px] text-amber-400/70 mt-0.5">You need to add your bank account before you can withdraw earnings.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBankForm(true)}
+                className="mt-2 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold transition-colors"
+              >
+                Add Bank Details
+              </button>
+            </div>
+          )}
+
+          {author.bankDetails?.accountNumber && !showBankForm && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div>
+                    <p className="text-[11px] font-medium text-emerald-300">{author.bankDetails.bankName}</p>
+                    <p className="text-[10px] text-emerald-400/70">••••{author.bankDetails.accountNumber.slice(-4)} • {author.bankDetails.accountName}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBankForm(true)}
+                  className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                  title="Edit bank details"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showBankForm && (
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/40 mb-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-white flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-400" /> Bank Details
+                </p>
+                <button
+                  onClick={() => { setShowBankForm(false); setBankMsg(null); }}
+                  className="text-[11px] text-neutral-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-neutral-400 mb-1">Bank *</label>
+                <select
+                  value={bankForm.bankName}
+                  onChange={(e) => {
+                    const selected = SUPPORTED_BANKS.find(b => b.name === e.target.value);
+                    setBankForm({ ...bankForm, bankName: e.target.value, bankCode: selected?.code || '' });
+                  }}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="" className="bg-neutral-900">Select your bank</option>
+                  {SUPPORTED_BANKS.filter(b => b.type === 'NGN' || b.type === 'ALL').map(b => (
+                    <option key={b.code} value={b.name} className="bg-neutral-900">{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-neutral-400 mb-1">Account Number *</label>
+                <input
+                  type="text"
+                  value={bankForm.accountNumber}
+                  onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) })}
+                  placeholder="0123456789"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-neutral-400 mb-1">Account Name</label>
+                <input
+                  type="text"
+                  value={bankForm.accountName}
+                  onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })}
+                  placeholder="John Doe"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveBankDetails}
+                className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors"
+              >
+                Save Bank Details
+              </button>
+
+              {bankMsg && (
+                <p className={`text-[11px] ${bankMsg.includes('success') ? 'text-emerald-400' : 'text-rose-400'}`}>{bankMsg}</p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2 mb-3">
             <input
               type="number"

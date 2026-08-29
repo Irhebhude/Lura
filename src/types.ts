@@ -124,6 +124,7 @@ export interface UserAccount {
   role: 'creator' | 'reader';
   handle?: string;
   avatar?: string;
+  passwordHash?: string;
   createdAt: string;
 }
 
