@@ -130,7 +130,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
   const handleSaveBankDetails = () => {
     if (!bankForm.bankName || !bankForm.accountNumber || !bankForm.accountName) {
-      setBankMsg('Please verify your account first to confirm the account name.');
+      setBankMsg('Please fill in all required fields.');
       return;
     }
     updateBankDetails({
@@ -139,7 +139,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       accountName: bankForm.accountName,
       bankCode: bankForm.bankCode,
       currency: bankCurrency,
-      verified: true,
+      verified: !!bankForm.bankCode,
       verifiedAt: new Date().toISOString(),
     });
     setBankMsg('Bank details saved successfully!');
@@ -377,21 +377,35 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                     type="text"
                     value={bankForm.accountNumber}
                     onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) })}
-                    placeholder="0123456789"
+                    placeholder={bankCurrency === 'NGN' ? '0123456789' : 'Enter your account number'}
                     className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
                   />
-                  <button
-                    onClick={handleVerifyBank}
-                    disabled={bankVerifying || !bankForm.accountNumber || !bankForm.bankCode}
-                    className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors disabled:opacity-50"
-                  >
-                    {bankVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Verify'}
-                  </button>
+                  {bankForm.bankCode ? (
+                    <button
+                      onClick={handleVerifyBank}
+                      disabled={bankVerifying || !bankForm.accountNumber}
+                      className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {bankVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Verify'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (bankForm.accountNumber.length >= 8) {
+                          setBankMsg('Enter your account name below and save.');
+                        }
+                      }}
+                      disabled={!bankForm.accountNumber || bankForm.accountNumber.length < 8}
+                      className="px-3 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white text-[11px] font-semibold transition-colors disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] text-neutral-400 mb-1">Account Name</label>
+                <label className="block text-[10px] text-neutral-400 mb-1">Account Name {bankForm.bankCode ? '(auto-verified)' : '*'}</label>
                 <input
                   type="text"
                   value={bankForm.accountName}
@@ -404,9 +418,10 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
               <button
                 onClick={handleSaveBankDetails}
-                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+                disabled={!bankForm.bankName || !bankForm.accountNumber || !bankForm.accountName}
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
               >
-                Save Bank Details
+                {bankForm.bankCode ? 'Save Verified Bank Details' : 'Save Bank Details'}
               </button>
 
               {bankMsg && (
