@@ -208,12 +208,30 @@ export async function verifyPayment(reference: string): Promise<{ success: boole
 }
 
 // ── Bank Verification ───────────────────────────────────────────
-export async function verifyBankAccount(accountNumber: string, bankCode: string): Promise<{ success: boolean; accountName?: string; recipientCode?: string; verified?: boolean; message?: string }> {
+export async function verifyBankAccount(accountNumber: string, bankCode: string, currency: string = 'NGN'): Promise<{ success: boolean; accountName?: string; recipientCode?: string; verified?: boolean; message?: string; currency?: string }> {
   try {
-    return await api('POST', '/bank/resolve', { accountNumber, bankCode });
+    return await api('POST', '/bank/resolve', { accountNumber, bankCode, currency });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Bank verification failed.';
     return { success: false, message: msg };
+  }
+}
+
+// ── Banks by Currency ────────────────────────────────────────────
+export interface BankOption {
+  id: number;
+  name: string;
+  code: string;
+  country: string;
+  currency: string;
+  active: boolean;
+}
+
+export async function fetchBanksForCurrency(currency: string): Promise<BankOption[]> {
+  try {
+    return await api<BankOption[]>('GET', `/banks?currency=${currency}`);
+  } catch {
+    return [];
   }
 }
 

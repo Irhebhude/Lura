@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, CreditCard, ShieldCheck, CheckCircle2, BookOpen, ArrowRight, Download, Loader2, AlertCircle } from 'lucide-react';
 import { EBook, CurrencyCode, Order } from '../types';
-import { formatPrice, initiatePayment, verifyPayment, getCurrentUser, downloadEbook, getPlatformConfig } from '../services/storage';
+import { formatPrice, initiatePayment, verifyPayment, getCurrentUser, downloadEbook, getPlatformConfig, convertUSDToCurrency } from '../services/storage';
+import { CURRENCIES } from '../data/initialData';
 
 declare global {
   interface Window {
@@ -64,11 +65,11 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
     return () => { document.head.removeChild(script); };
   }, []);
 
-  // Calculate amounts in NGN
-  const rate = 1500; // NGN/USD rate (should come from config)
-  const grossAmountNgn = book.priceUSD * rate;
-  const commissionNgn = grossAmountNgn * (config.commissionPercent / 100);
-  const sellerNetNgn = grossAmountNgn - commissionNgn;
+  // Calculate amounts in the selected currency
+  const currencyConfig = CURRENCIES[currency] || CURRENCIES.USD;
+  const grossAmountLocal = convertUSDToCurrency(book.priceUSD, currency);
+  const commissionLocal = grossAmountLocal * (config.commissionPercent / 100);
+  const sellerNetLocal = grossAmountLocal - commissionLocal;
 
   const handleCheckout = useCallback(async () => {
     if (!finalEmail.trim()) {
@@ -80,11 +81,11 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
     setError(null);
 
     try {
-      // Initialize payment on backend
+      // Initialize payment on backend with selected currency
       const initResult = await initiatePayment({
         bookId: book.id,
         email: finalEmail,
-        currency: 'NGN',
+        currency: currency,
       });
 
       if (!initResult.success) {
@@ -109,18 +110,19 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
         return;
       }
 
-      // Live mode: open Paystack popup
+      // Live mode: open Paystack popup with selected currency
       if (window.PaystackPop && initResult.access_code) {
         const handler = window.PaystackPop.setup({
           key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
           email: finalEmail,
-          amount: grossAmountNgn * 100, // kobo
-          currency: 'NGN',
+          amount: grossAmountLocal * 100, // subunits (kobo/cents/pesewas)
+          currency: currency,
           ref: initResult.reference,
           metadata: {
             orderId: initResult.order?.id,
             bookTitle: book.title,
             sellerName: book.authorName,
+            selectedCurrency: currency,
           },
           callback: async (response) => {
             setVerifying(true);
@@ -153,7 +155,7 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
       setError('An error occurred. Please try again.');
       setLoading(false);
     }
-  }, [finalEmail, book, grossAmountNgn, onSuccess]);
+  }, [finalEmail, book, grossAmountLocal, currency, onSuccess]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-neutral-950/80 backdrop-blur-md">
@@ -222,20 +224,20 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
               {/* Payment Breakdown */}
               <div className="bg-neutral-950 rounded-xl p-4 border border-neutral-800/40 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-neutral-400">Book Price</span>
-                  <span className="text-white">₦{grossAmountNgn.toLocaleString()}</span>
+                  <span className="text-neutral-400">Book Price ({currency})</span>
+                  <span className="text-white">{formatPrice(book.priceUSD, currency)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-neutral-400">Platform Fee ({config.commissionPercent}%)</span>
-                  <span className="text-amber-400">₦{commissionNgn.toLocaleString()}</span>
+                  <span className="text-amber-400">{currencyConfig.symbol}{commissionLocal.toLocaleString(undefined, { minimumFractionDigits: currency === 'NGN' || currency === 'KES' ? 0 : 2, maximumFractionDigits: currency === 'NGN' || currency === 'KES' ? 0 : 2 })}</span>
                 </div>
                 <div className="flex justify-between text-[10px] text-neutral-500">
                   <span>Seller receives</span>
-                  <span>₦{sellerNetNgn.toLocaleString()}</span>
+                  <span>{currencyConfig.symbol}{sellerNetLocal.toLocaleString(undefined, { minimumFractionDigits: currency === 'NGN' || currency === 'KES' ? 0 : 2, maximumFractionDigits: currency === 'NGN' || currency === 'KES' ? 0 : 2 })}</span>
                 </div>
                 <div className="border-t border-neutral-800/60 pt-2 flex justify-between text-xs font-bold">
-                  <span className="text-white">You Pay</span>
-                  <span className="text-white">₦{grossAmountNgn.toLocaleString()}</span>
+                  <span className="text-white">You Pay ({currency})</span>
+                  <span className="text-white">{formatPrice(book.priceUSD, currency)}</span>
                 </div>
               </div>
 
@@ -256,7 +258,7 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>Pay ₦{grossAmountNgn.toLocaleString()}</span>
+                    <span>Pay {formatPrice(book.priceUSD, currency)}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -271,7 +273,7 @@ export const InstantCheckoutModal: React.FC<InstantCheckoutModalProps> = ({
             </div>
             <h3 className="text-lg font-bold text-white font-serif mb-2">Payment Confirmed!</h3>
             <p className="text-xs text-neutral-400 mb-2">
-              Your payment of ₦{grossAmountNgn.toLocaleString()} has been verified.
+              Your payment of {formatPrice(book.priceUSD, currency)} has been verified.
             </p>
             <p className="text-[10px] text-neutral-500 mb-6">
               {order?.buyerEmail && `A download link has been sent to ${order.buyerEmail}. `}

@@ -7,8 +7,8 @@ import {
 import { EBook, CurrencyCode, LedgerEntry } from '../types';
 import {
   formatPrice, getAuthor, getOrders, getWithdrawals, requestWithdrawal,
-  updateBankDetails, SUPPORTED_BANKS, verifyBankAccount, getWalletInfo,
-  getLedger, getPlatformConfig,
+  updateBankDetails, verifyBankAccount, getWalletInfo,
+  getLedger, getPlatformConfig, fetchBanksForCurrency, BankOption,
 } from '../services/storage';
 import { CURRENCIES } from '../data/initialData';
 
@@ -39,6 +39,8 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
   // Bank form state
   const [showBankForm, setShowBankForm] = useState(false);
+  const [bankCurrency, setBankCurrency] = useState<CurrencyCode>(author.bankDetails?.currency as CurrencyCode || currency || 'NGN');
+  const [bankList, setBankList] = useState<BankOption[]>([]);
   const [bankForm, setBankForm] = useState({
     bankName: author.bankDetails?.bankName || '',
     accountNumber: author.bankDetails?.accountNumber || '',
@@ -77,6 +79,13 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
   const creatorBooks = books.filter((b) => b.authorId === author.id);
   const recentOrders = orders.slice(0, 5);
 
+  // Load banks when currency changes or bank form opens
+  useEffect(() => {
+    if (showBankForm && bankCurrency) {
+      fetchBanksForCurrency(bankCurrency).then(banks => setBankList(banks));
+    }
+  }, [showBankForm, bankCurrency]);
+
   // Bank verification via Paystack
   const handleVerifyBank = async () => {
     if (!bankForm.accountNumber || !bankForm.bankCode) {
@@ -91,7 +100,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     setBankVerifying(true);
     setBankMsg(null);
 
-    const result = await verifyBankAccount(bankForm.accountNumber, bankForm.bankCode);
+    const result = await verifyBankAccount(bankForm.accountNumber, bankForm.bankCode, bankCurrency);
 
     if (result.success && result.accountName) {
       setBankForm(prev => ({
@@ -115,7 +124,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       accountNumber: bankForm.accountNumber,
       accountName: bankForm.accountName,
       bankCode: bankForm.bankCode,
-      currency: 'NGN',
+      currency: bankCurrency,
       verified: true,
       verifiedAt: new Date().toISOString(),
     });
@@ -130,12 +139,14 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       setWithdrawMsg('Enter a valid amount.');
       return;
     }
-    if (amt < platformConfig.minWithdrawal) {
-      setWithdrawMsg(`Minimum withdrawal is ₦${platformConfig.minWithdrawal.toLocaleString()}.`);
+    const minWithdraw = platformConfig.minWithdrawal * (CURRENCIES[currency]?.rate || 1);
+    const maxWithdraw = platformConfig.maxWithdrawal * (CURRENCIES[currency]?.rate || 1);
+    if (amt < minWithdraw) {
+      setWithdrawMsg(`Minimum withdrawal is ${formatPrice(platformConfig.minWithdrawal, currency)}.`);
       return;
     }
-    if (amt > platformConfig.maxWithdrawal) {
-      setWithdrawMsg(`Maximum withdrawal is ₦${platformConfig.maxWithdrawal.toLocaleString()}.`);
+    if (amt > maxWithdraw) {
+      setWithdrawMsg(`Maximum withdrawal is ${formatPrice(platformConfig.maxWithdrawal, currency)}.`);
       return;
     }
     if (amt > availableBalanceNgn) {
@@ -149,7 +160,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     setWithdrawing(true);
     setWithdrawMsg(null);
     const amt = parseFloat(withdrawAmount);
-    const result = await requestWithdrawal(amt, 'NGN');
+    const result = await requestWithdrawal(amt, currency);
     setWithdrawMsg(result.message);
     if (result.success) {
       setWithdrawAmount('');
@@ -205,9 +216,9 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Sales', value: totalSales.toLocaleString(), icon: ShoppingCart, color: 'text-indigo-400' },
-          { label: 'Total Earnings', value: `₦${totalEarningsNgn.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-400' },
+          { label: `Total Earnings (${currency})`, value: formatPrice(totalEarningsNgn / (CURRENCIES[currency]?.rate || 1), currency), icon: DollarSign, color: 'text-emerald-400' },
           { label: 'Published Books', value: creatorBooks.length.toString(), icon: BookOpen, color: 'text-purple-400' },
-          { label: 'Available Balance', value: `₦${availableBalanceNgn.toLocaleString()}`, icon: Wallet, color: 'text-amber-400' },
+          { label: `Available Balance (${currency})`, value: formatPrice(availableBalanceNgn / (CURRENCIES[currency]?.rate || 1), currency), icon: Wallet, color: 'text-amber-400' },
         ].map((stat) => (
           <div key={stat.label} className="bg-neutral-900 border border-neutral-800/60 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -223,11 +234,11 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       <div className="mb-6 p-3 rounded-xl bg-neutral-900 border border-neutral-800/60 flex flex-wrap gap-4 text-[11px] text-neutral-400">
         <span>Platform commission: <strong className="text-white">{platformConfig.commissionPercent}%</strong></span>
         <span>•</span>
-        <span>Withdrawal fee: <strong className="text-white">₦{withdrawalFee.toLocaleString()}</strong></span>
+        <span>Withdrawal fee: <strong className="text-white">{formatPrice(platformConfig.withdrawalFee, currency)}</strong></span>
         <span>•</span>
-        <span>Total commission paid: <strong className="text-amber-400">₦{totalCommissionPaidNgn.toLocaleString()}</strong></span>
+        <span>Total commission paid: <strong className="text-amber-400">{formatPrice(totalCommissionPaidNgn / (CURRENCIES[currency]?.rate || 1), currency)}</strong></span>
         <span>•</span>
-        <span>Total withdrawn: <strong className="text-indigo-400">₦{totalWithdrawnNgn.toLocaleString()}</strong></span>
+        <span>Total withdrawn: <strong className="text-indigo-400">{formatPrice(totalWithdrawnNgn / (CURRENCIES[currency]?.rate || 1), currency)}</strong></span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -237,9 +248,9 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
             <Wallet className="w-4 h-4 text-amber-400" /> Wallet & Withdraw
           </h3>
           <div className="bg-neutral-950 rounded-xl p-4 mb-4 border border-neutral-800/40">
-            <p className="text-[11px] text-neutral-400 mb-1">Available Balance</p>
-            <p className="text-2xl font-bold text-white">₦{availableBalanceNgn.toLocaleString()}</p>
-            <p className="text-[10px] text-neutral-500 mt-1">{platformConfig.commissionPercent}% commission • Instant payouts</p>
+            <p className="text-[11px] text-neutral-400 mb-1">Available Balance ({currency})</p>
+            <p className="text-2xl font-bold text-white">{formatPrice(availableBalanceNgn / (CURRENCIES[currency]?.rate || 1), currency)}</p>
+            <p className="text-[10px] text-neutral-500 mt-1">{platformConfig.commissionPercent}% commission • Payouts in {currency}</p>
           </div>
 
           {/* Bank Details Section */}
@@ -297,20 +308,40 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               </div>
 
               <div>
+                <label className="block text-[10px] text-neutral-400 mb-1">Payout Currency *</label>
+                <select
+                  value={bankCurrency}
+                  onChange={(e) => {
+                    setBankCurrency(e.target.value as CurrencyCode);
+                    setBankForm({ ...bankForm, bankName: '', bankCode: '' });
+                    setBankMsg(null);
+                  }}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {Object.entries(CURRENCIES).map(([code, cfg]) => (
+                    <option key={code} value={code} className="bg-neutral-900">{cfg.symbol} {code} — {cfg.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-[10px] text-neutral-400 mb-1">Bank *</label>
                 <select
                   value={bankForm.bankName}
                   onChange={(e) => {
-                    const selected = SUPPORTED_BANKS.find(b => b.name === e.target.value);
+                    const selected = bankList.find(b => b.name === e.target.value);
                     setBankForm({ ...bankForm, bankName: e.target.value, bankCode: selected?.code || '' });
                   }}
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 >
                   <option value="" className="bg-neutral-900">Select your bank</option>
-                  {SUPPORTED_BANKS.filter(b => b.type === 'NGN' || b.type === 'ALL').map(b => (
+                  {bankList.map(b => (
                     <option key={b.code} value={b.name} className="bg-neutral-900">{b.name}</option>
                   ))}
                 </select>
+                {bankList.length === 0 && bankCurrency && (
+                  <p className="text-[9px] text-neutral-500 mt-1">Loading banks for {bankCurrency}...</p>
+                )}
               </div>
 
               <div>
@@ -364,7 +395,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               type="number"
               value={withdrawAmount}
               onChange={(e) => setWithdrawAmount(e.target.value)}
-              placeholder="Amount in NGN"
+              placeholder={`Amount in ${currency}`}
               className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
             />
             <button
@@ -386,7 +417,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               <p className="text-[11px] text-neutral-400 mb-2">Recent Withdrawals</p>
               {withdrawals.slice(0, 3).map((w) => (
                 <div key={w.id} className="flex items-center justify-between py-1.5 text-[11px]">
-                  <span className="text-neutral-300">₦{w.amountLocal.toLocaleString()}</span>
+                  <span className="text-neutral-300">{CURRENCIES[w.currency]?.symbol || '$'}{w.amountLocal.toLocaleString()}</span>
                   <span className={`capitalize ${
                     w.status === 'successful' ? 'text-emerald-400' :
                     w.status === 'failed' ? 'text-rose-400' :
@@ -416,7 +447,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                   <img src={book.coverImage} alt={book.title} className="w-10 h-14 rounded-lg object-cover" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-white truncate">{book.title}</p>
-                    <p className="text-[10px] text-neutral-400">{book.salesCount} sales • ₦{(book.priceUSD * 1500).toLocaleString()}</p>
+                    <p className="text-[10px] text-neutral-400">{book.salesCount} sales • {formatPrice(book.priceUSD, currency)}</p>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenGoogleSeo(book); }}
@@ -447,7 +478,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                     <p className="text-[11px] font-medium text-white truncate">{order.bookTitle}</p>
                     <p className="text-[10px] text-neutral-400">{order.buyerName} • {order.date}</p>
                   </div>
-                  <span className="text-xs font-semibold text-emerald-400">₦{(order.amountPaid * 1500).toLocaleString()}</span>
+                  <span className="text-xs font-semibold text-emerald-400">{formatPrice(order.amountPaid, currency)}</span>
                 </div>
               ))}
             </div>
@@ -484,7 +515,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                       <div className="flex items-center gap-1.5">
                         {getStatusBadge(entry.status)}
                         <span className={`text-[11px] font-semibold ${entry.direction === 'credit' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {entry.direction === 'credit' ? '+' : '-'}₦{entry.amount.toLocaleString()}
+                          {entry.direction === 'credit' ? '+' : '-'}{CURRENCIES[entry.currency]?.symbol || '$'}{entry.amount.toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -505,16 +536,15 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
             <div className="bg-neutral-950 rounded-xl p-4 border border-neutral-800/40 space-y-2 mb-4">
               <div className="flex justify-between text-xs">
-                <span className="text-neutral-400">Withdrawal Amount</span>
-                <span className="text-white font-semibold">₦{withdrawAmountNgn.toLocaleString()}</span>
+                <span className="text-neutral-400">Withdrawal Amount</span>                  <span className="text-white font-semibold">{formatPrice(withdrawAmountNgn / (CURRENCIES[currency]?.rate || 1), currency)}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-neutral-400">Withdrawal Fee</span>
-                <span className="text-rose-400">-₦{withdrawalFee.toLocaleString()}</span>
+                <span className="text-rose-400">-{formatPrice(withdrawalFee, currency)}</span>
               </div>
               <div className="border-t border-neutral-800/60 pt-2 flex justify-between text-xs font-bold">
                 <span className="text-white">You Will Receive</span>
-                <span className="text-emerald-400">₦{withdrawNetNgn.toLocaleString()}</span>
+                <span className="text-emerald-400">{formatPrice(withdrawNetNgn / (CURRENCIES[currency]?.rate || 1), currency)}</span>
               </div>
             </div>
 

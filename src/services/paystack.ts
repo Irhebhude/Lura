@@ -118,16 +118,17 @@ async function paystackRequest<T>(
 // ── Payment Initialize ───────────────────────────────────────────
 export async function initializePayment(params: {
   email: string;
-  amountInKobo: number;
+  amountInSubunits: number; // kobo for NGN, pesewas for GHS, cents for USD/EUR/GBP
   reference: string;
+  currency: string; // NGN, GHS, KES, USD, EUR, GBP
   callbackUrl?: string;
   metadata?: Record<string, unknown>;
 }): Promise<PaystackInitializeData> {
   const body: Record<string, unknown> = {
     email: params.email,
-    amount: params.amountInKobo,
+    amount: params.amountInSubunits,
     reference: params.reference,
-    currency: 'NGN',
+    currency: params.currency || 'NGN',
   };
   if (params.callbackUrl) body.callback_url = params.callbackUrl;
   if (params.metadata) body.metadata = params.metadata;
@@ -150,12 +151,25 @@ export async function verifyTransaction(reference: string): Promise<PaystackVeri
 }
 
 // ── Bank List ────────────────────────────────────────────────────
-export async function listBanks(country: string = 'nigeria'): Promise<PaystackBankData[]> {
-  const result = await paystackRequest<PaystackBankData[]>(
-    'GET',
-    `/bank?country=${country}&currency=NGN`,
-  );
+export async function listBanks(country?: string, currency?: string): Promise<PaystackBankData[]> {
+  let url = '/bank?';
+  if (country) url += `country=${country}`;
+  if (currency) url += `${url.includes('?') ? '&' : '?'}currency=${currency}`;
+  const result = await paystackRequest<PaystackBankData[]>('GET', url);
   return result.data;
+}
+
+// ── Country for Currency ──────────────────────────────────────────
+export function countryForCurrency(currency: string): string {
+  switch (currency) {
+    case 'NGN': return 'nigeria';
+    case 'GHS': return 'ghana';
+    case 'KES': return 'kenya';
+    case 'USD': return 'united-states';
+    case 'GBP': return 'united-kingdom';
+    case 'EUR': return 'france';
+    default: return 'nigeria';
+  }
 }
 
 // ── Resolve Bank Account ─────────────────────────────────────────
@@ -175,13 +189,14 @@ export async function createTransferRecipient(params: {
   name: string;
   accountNumber: string;
   bankCode: string;
+  currency?: string;
 }): Promise<PaystackTransferRecipientData> {
   const body = {
     type: 'nuban',
     name: params.name,
     account_number: params.accountNumber,
     bank_code: params.bankCode,
-    currency: 'NGN',
+    currency: params.currency || 'NGN',
   };
 
   const result = await paystackRequest<PaystackTransferRecipientData>(
@@ -246,12 +261,16 @@ export function verifyWebhookSignature(
   return hash === signature;
 }
 
-// ── Helper: NGN to Kobo ──────────────────────────────────────────
-export function ngnToKobo(amountInNaira: number): number {
-  return Math.round(amountInNaira * 100);
+// ── Helper: Currency to Sub-units ────────────────────────────────
+// NGN: kobo (100), GHS: pesewas (100), KES: cents (100), USD/EUR/GBP: cents (100)
+export function currencyToSubunits(amount: number): number {
+  return Math.round(amount * 100);
 }
 
-// ── Helper: Kobo to NGN ──────────────────────────────────────────
-export function koboToNgn(amountInKobo: number): number {
-  return amountInKobo / 100;
+export function subunitsToCurrency(amountInSubunits: number): number {
+  return amountInSubunits / 100;
 }
+
+// Backward-compatible aliases
+export const ngnToKobo = currencyToSubunits;
+export const koboToNgn = subunitsToCurrency;

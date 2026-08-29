@@ -8,12 +8,16 @@ import {
   isPaystackConfigured,
   initializePayment,
   verifyTransaction,
+  listBanks as listPaystackBanks,
   resolveBankAccount,
   createTransferRecipient,
   initiateTransfer,
   verifyTransfer,
   fetchBalance,
   verifyWebhookSignature,
+  currencyToSubunits,
+  subunitsToCurrency,
+  countryForCurrency,
   ngnToKobo,
   koboToNgn,
 } from './src/services/paystack';
@@ -150,12 +154,12 @@ app.post('/api/payments/initialize', async (req, res) => {
       return res.json({ success: true, message: 'Already purchased.', order: existingOrder });
     }
 
-    // Calculate amounts in NGN
-    const selectedCurrency = currency || 'NGN';
+    // Calculate amounts in the selected currency
+    const selectedCurrency = (currency as CurrencyCode) || 'NGN';
     const rate = CURRENCIES[selectedCurrency]?.rate || 1;
-    const grossAmountNgn = book.priceUSD * rate;
-    const commissionAmountNgn = grossAmountNgn * (db.config.commissionPercent / 100);
-    const sellerNetNgn = grossAmountNgn - commissionAmountNgn;
+    const grossAmountLocal = book.priceUSD * rate;
+    const commissionAmountLocal = grossAmountLocal * (db.config.commissionPercent / 100);
+    const sellerNetLocal = grossAmountLocal - commissionAmountLocal;
 
     // Generate unique reference
     const reference = `LURA-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -177,9 +181,9 @@ app.post('/api/payments/initialize', async (req, res) => {
       downloadToken: `dl_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       status: 'pending',
       paystackReference: reference,
-      grossAmount: grossAmountNgn,
-      commissionAmount: commissionAmountNgn,
-      sellerNetAmount: sellerNetNgn,
+      grossAmount: grossAmountLocal,
+      commissionAmount: commissionAmountLocal,
+      sellerNetAmount: sellerNetLocal,
     };
     db.orders.unshift(order);
     saveDB(db);
@@ -197,16 +201,18 @@ app.post('/api/payments/initialize', async (req, res) => {
       });
     }
 
-    // Initialize real Paystack payment
+    // Initialize real Paystack payment with selected currency
     const paystackData = await initializePayment({
       email,
-      amountInKobo: ngnToKobo(grossAmountNgn),
+      amountInSubunits: currencyToSubunits(grossAmountLocal),
       reference,
+      currency: selectedCurrency,
       callbackUrl: `${req.protocol}://${req.get('host')}/api/payments/callback`,
       metadata: {
         orderId: order.id,
         bookId: book.id,
         sellerId: book.authorId,
+        selectedCurrency,
         custom_fields: [
           { display_name: 'Book', variable_name: 'book', value: book.title },
           { display_name: 'Seller', variable_name: 'seller', value: book.authorName },
@@ -273,6 +279,8 @@ app.post('/api/payments/verify', async (req, res) => {
 
 function completeOrderPayment(order: Order, paystackData?: import('./src/services/paystack').PaystackVerifyData) {
   const now = new Date().toISOString();
+  const orderCurrency = order.currency || 'NGN';
+  const rate = CURRENCIES[orderCurrency]?.rate || 1;
 
   // Mark order completed
   const oi = db.orders.findIndex(o => o.id === order.id);
@@ -285,25 +293,29 @@ function completeOrderPayment(order: Order, paystackData?: import('./src/service
   const bi = db.books.findIndex(b => b.id === order.bookId);
   if (bi >= 0) db.books[bi].salesCount = (db.books[bi].salesCount || 0) + 1;
 
-  // Calculate seller earnings
-  const grossAmountNgn = order.grossAmount || order.amountPaid * (CURRENCIES[order.currency]?.rate || 1);
-  const commissionNgn = order.commissionAmount || grossAmountNgn * (db.config.commissionPercent / 100);
-  const sellerNetNgn = order.sellerNetAmount || grossAmountNgn - commissionNgn;
+  // Calculate seller earnings in the payment currency
+  const grossAmountLocal = order.grossAmount || order.amountPaid * rate;
+  const commissionLocal = order.commissionAmount || grossAmountLocal * (db.config.commissionPercent / 100);
+  const sellerNetLocal = order.sellerNetAmount || grossAmountLocal - commissionLocal;
+
+  // Convert to USD for author wallet (wallet always stored in USD)
+  const sellerNetUSD = sellerNetLocal / rate;
+  const commissionUSD = commissionLocal / rate;
 
   // Update order with final amounts
   if (oi >= 0) {
-    db.orders[oi].grossAmount = grossAmountNgn;
-    db.orders[oi].commissionAmount = commissionNgn;
-    db.orders[oi].sellerNetAmount = sellerNetNgn;
+    db.orders[oi].grossAmount = grossAmountLocal;
+    db.orders[oi].commissionAmount = commissionLocal;
+    db.orders[oi].sellerNetAmount = sellerNetLocal;
   }
 
-  // Credit seller wallet
+  // Credit seller wallet (stored as USD for universal balance)
   db.author.totalSales = (db.author.totalSales || 0) + 1;
   db.author.totalRevenueUSD = (db.author.totalRevenueUSD || 0) + order.amountPaid;
-  db.author.payoutBalanceUSD = (db.author.payoutBalanceUSD || 0) + sellerNetNgn / (CURRENCIES['NGN']?.rate || 1);
-  db.author.totalCommissionPaid = (db.author.totalCommissionPaid || 0) + commissionNgn / (CURRENCIES['NGN']?.rate || 1);
+  db.author.payoutBalanceUSD = (db.author.payoutBalanceUSD || 0) + sellerNetUSD;
+  db.author.totalCommissionPaid = (db.author.totalCommissionPaid || 0) + commissionUSD;
 
-  // Ledger: sale credit
+  // Ledger: sale credit (in the payment currency)
   addLedgerEntry({
     referenceId: order.id,
     userId: order.authorId,
@@ -312,27 +324,27 @@ function completeOrderPayment(order: Order, paystackData?: import('./src/service
     orderId: order.id,
     ebookId: order.bookId,
     type: 'sale_credit',
-    amount: sellerNetNgn,
-    currency: 'NGN',
+    amount: sellerNetLocal,
+    currency: orderCurrency as CurrencyCode,
     direction: 'credit',
     status: 'completed',
-    description: `Sale of "${order.bookTitle}" — net after ${db.config.commissionPercent}% commission`,
+    description: `Sale of "${order.bookTitle}" in ${orderCurrency} — net after ${db.config.commissionPercent}% commission`,
     paystackReference: order.paystackReference,
-    metadata: { grossAmount: grossAmountNgn, commission: commissionNgn, sellerNet: sellerNetNgn },
+    metadata: { grossAmount: grossAmountLocal, commission: commissionLocal, sellerNet: sellerNetLocal, currency: orderCurrency },
   });
 
-  // Ledger: commission debit
+  // Ledger: commission debit (in the payment currency)
   addLedgerEntry({
     referenceId: order.id,
     userId: 'platform',
     orderId: order.id,
     ebookId: order.bookId,
     type: 'commission_debit',
-    amount: commissionNgn,
-    currency: 'NGN',
+    amount: commissionLocal,
+    currency: orderCurrency as CurrencyCode,
     direction: 'credit',
     status: 'completed',
-    description: `${db.config.commissionPercent}% commission on "${order.bookTitle}"`,
+    description: `${db.config.commissionPercent}% commission on "${order.bookTitle}" (${orderCurrency})`,
     paystackReference: order.paystackReference,
   });
 
@@ -367,23 +379,67 @@ app.get('/api/payments/callback', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// BANK LIST (filtered by country/currency)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/banks', async (req, res) => {
+  try {
+    const { currency } = req.query;
+    if (!isPaystackConfigured()) {
+      // Sandbox mode: return common banks
+      return res.json([
+        { id: 1, name: 'Access Bank', code: '044', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 2, name: 'Guaranty Trust Bank', code: '058', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 3, name: 'Zenith Bank', code: '057', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 4, name: 'United Bank for Africa', code: '033', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 5, name: 'First Bank of Nigeria', code: '011', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 6, name: 'Kuda Bank', code: '50211', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 7, name: 'OPay', code: '999992', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 8, name: 'Moniepoint', code: '50515', country: 'nigeria', currency: 'NGN', active: true },
+        { id: 9, name: 'Ecobank Ghana', code: 'ECTUGHA', country: 'ghana', currency: 'GHS', active: true },
+        { id: 10, name: 'GCB Bank', code: 'GCB', country: 'ghana', currency: 'GHS', active: true },
+        { id: 11, name: 'Fidelity Bank Ghana', code: 'FBG', country: 'ghana', currency: 'GHS', active: true },
+        { id: 12, name: 'KCB Bank Kenya', code: 'KCBLKENA', country: 'kenya', currency: 'KES', active: true },
+        { id: 13, name: 'Equity Bank Kenya', code: 'EQBLKENA', country: 'kenya', currency: 'KES', active: true },
+        { id: 14, name: 'Cooperative Bank Kenya', code: 'KCOOKE', country: 'kenya', currency: 'KES', active: true },
+      ].filter(b => !currency || b.currency === currency));
+    }
+    const country = currency ? countryForCurrency(currency as string) : undefined;
+    const banks = await listPaystackBanks(country, currency as string | undefined);
+    res.json(banks.filter(b => b.active && !b.is_deleted));
+  } catch (err) {
+    console.error('[banks]', err);
+    res.json([]);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
 // BANK ACCOUNT VERIFICATION (Paystack Resolve API)
 // ══════════════════════════════════════════════════════════════════
 app.post('/api/bank/resolve', async (req, res) => {
   try {
-    const { accountNumber, bankCode } = req.body;
+    const { accountNumber, bankCode, currency } = req.body;
     if (!accountNumber || !bankCode) {
       return res.status(400).json({ success: false, message: 'accountNumber and bankCode required.' });
     }
+    const selectedCurrency = currency || 'NGN';
 
     if (!isPaystackConfigured()) {
       // Sandbox mode: return mock data
+      const bankNames: Record<string, string> = {
+        'NGN': 'Sandbox NGN Account',
+        'GHS': 'Sandbox GHS Account',
+        'KES': 'Sandbox KES Account',
+        'USD': 'Sandbox USD Account',
+        'EUR': 'Sandbox EUR Account',
+        'GBP': 'Sandbox GBP Account',
+      };
       return res.json({
         success: true,
         accountNumber,
-        accountName: 'Sandbox Account Name',
+        accountName: bankNames[selectedCurrency] || 'Sandbox Account',
         bankId: 0,
         verified: true,
+        currency: selectedCurrency,
       });
     }
 
@@ -396,6 +452,7 @@ app.post('/api/bank/resolve', async (req, res) => {
         name: data.account_name,
         accountNumber: data.account_number,
         bankCode,
+        currency: selectedCurrency,
       });
       recipientCode = recipient.recipient_code;
     } catch (e) {
@@ -409,6 +466,7 @@ app.post('/api/bank/resolve', async (req, res) => {
       bankId: data.bank_id,
       verified: true,
       recipientCode,
+      currency: selectedCurrency,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Account verification failed';
@@ -661,16 +719,20 @@ function handleWebhookEvent(eventType: string, data: Record<string, unknown>) {
       }
 
       // Complete the order (same logic as verify)
-      const grossAmountNgn = order.grossAmount || order.amountPaid * (CURRENCIES[order.currency]?.rate || 1);
-      const commissionNgn = order.commissionAmount || grossAmountNgn * (db.config.commissionPercent / 100);
-      const sellerNetNgn = order.sellerNetAmount || grossAmountNgn - commissionNgn;
+      const orderCurrency = order.currency || 'NGN';
+      const rate = CURRENCIES[orderCurrency]?.rate || 1;
+      const grossAmountLocal = order.grossAmount || order.amountPaid * rate;
+      const commissionLocal = order.commissionAmount || grossAmountLocal * (db.config.commissionPercent / 100);
+      const sellerNetLocal = order.sellerNetAmount || grossAmountLocal - commissionLocal;
+      const sellerNetUSD = sellerNetLocal / rate;
+      const commissionUSD = commissionLocal / rate;
 
       const oi = db.orders.findIndex(o => o.id === order.id);
       if (oi >= 0) {
         db.orders[oi].status = 'completed';
-        db.orders[oi].grossAmount = grossAmountNgn;
-        db.orders[oi].commissionAmount = commissionNgn;
-        db.orders[oi].sellerNetAmount = sellerNetNgn;
+        db.orders[oi].grossAmount = grossAmountLocal;
+        db.orders[oi].commissionAmount = commissionLocal;
+        db.orders[oi].sellerNetAmount = sellerNetLocal;
       }
 
       if (!db.library.includes(order.bookId)) db.library.unshift(order.bookId);
@@ -678,11 +740,10 @@ function handleWebhookEvent(eventType: string, data: Record<string, unknown>) {
       const bi = db.books.findIndex(b => b.id === order.bookId);
       if (bi >= 0) db.books[bi].salesCount = (db.books[bi].salesCount || 0) + 1;
 
-      const rate = CURRENCIES['NGN']?.rate || 1;
       db.author.totalSales = (db.author.totalSales || 0) + 1;
       db.author.totalRevenueUSD = (db.author.totalRevenueUSD || 0) + order.amountPaid;
-      db.author.payoutBalanceUSD = (db.author.payoutBalanceUSD || 0) + sellerNetNgn / rate;
-      db.author.totalCommissionPaid = (db.author.totalCommissionPaid || 0) + commissionNgn / rate;
+      db.author.payoutBalanceUSD = (db.author.payoutBalanceUSD || 0) + sellerNetUSD;
+      db.author.totalCommissionPaid = (db.author.totalCommissionPaid || 0) + commissionUSD;
 
       // Ledger entries
       addLedgerEntry({
@@ -693,13 +754,13 @@ function handleWebhookEvent(eventType: string, data: Record<string, unknown>) {
         orderId: order.id,
         ebookId: order.bookId,
         type: 'sale_credit',
-        amount: sellerNetNgn,
-        currency: 'NGN',
+        amount: sellerNetLocal,
+        currency: orderCurrency as CurrencyCode,
         direction: 'credit',
         status: 'completed',
-        description: `Sale of "${order.bookTitle}" (webhook verified)`,
+        description: `Sale of "${order.bookTitle}" in ${orderCurrency} (webhook verified)`,
         paystackReference: reference,
-        metadata: { grossAmount: grossAmountNgn, commission: commissionNgn, sellerNet: sellerNetNgn },
+        metadata: { grossAmount: grossAmountLocal, commission: commissionLocal, sellerNet: sellerNetLocal, currency: orderCurrency },
       });
 
       addLedgerEntry({
@@ -708,15 +769,15 @@ function handleWebhookEvent(eventType: string, data: Record<string, unknown>) {
         orderId: order.id,
         ebookId: order.bookId,
         type: 'commission_debit',
-        amount: commissionNgn,
-        currency: 'NGN',
+        amount: commissionLocal,
+        currency: orderCurrency as CurrencyCode,
         direction: 'credit',
         status: 'completed',
-        description: `${db.config.commissionPercent}% commission on "${order.bookTitle}" (webhook)`,
+        description: `${db.config.commissionPercent}% commission on "${order.bookTitle}" in ${orderCurrency} (webhook)`,
         paystackReference: reference,
       });
 
-      console.log(`[webhook] charge.success: Order ${order.id} completed, seller credited ₦${sellerNetNgn.toLocaleString()}`);
+      console.log(`[webhook] charge.success: Order ${order.id} completed, seller credited ${CURRENCIES[orderCurrency]?.symbol || '$'}${sellerNetLocal.toLocaleString()} ${orderCurrency}`);
       break;
     }
 
