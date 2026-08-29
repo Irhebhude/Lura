@@ -1,10 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, DollarSign, BookOpen, Eye, ShoppingCart, PlusCircle,
-  Globe, ArrowUpRight, Wallet, BarChart3, Users, Building2, CheckCircle2, AlertCircle, Pencil,
+  Globe, Wallet, BarChart3, Building2, CheckCircle2, AlertCircle, Pencil,
+  ArrowDownRight, ArrowUpRight, Clock, XCircle, RefreshCw, Loader2, CreditCard,
 } from 'lucide-react';
-import { EBook, CurrencyCode } from '../types';
-import { formatPrice, getAuthor, getOrders, getWithdrawals, requestWithdrawal, updateBankDetails, SUPPORTED_BANKS } from '../services/storage';
+import { EBook, CurrencyCode, LedgerEntry } from '../types';
+import {
+  formatPrice, getAuthor, getOrders, getWithdrawals, requestWithdrawal,
+  updateBankDetails, SUPPORTED_BANKS, verifyBankAccount, getWalletInfo,
+  getLedger, getPlatformConfig,
+} from '../services/storage';
 import { CURRENCIES } from '../data/initialData';
 
 interface CreatorDashboardProps {
@@ -26,9 +31,13 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 }) => {
   const author = useMemo(() => getAuthor(), [books]);
   const orders = useMemo(() => getOrders(), [books]);
-  const withdrawals = useMemo(() => getWithdrawals(), []);
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null);
+  const withdrawals = useMemo(() => getWithdrawals(), [books]);
+  const platformConfig = useMemo(() => getPlatformConfig(), []);
+  const [wallet, setWallet] = useState<ReturnType<typeof getWalletInfo> extends Promise<infer T> ? T : never>(null);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [showLedger, setShowLedger] = useState(false);
+
+  // Bank form state
   const [showBankForm, setShowBankForm] = useState(false);
   const [bankForm, setBankForm] = useState({
     bankName: author.bankDetails?.bankName || '',
@@ -37,43 +46,145 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
     bankCode: author.bankDetails?.bankCode || '',
   });
   const [bankMsg, setBankMsg] = useState<string | null>(null);
+  const [bankVerifying, setBankVerifying] = useState(false);
 
-  const totalSales = author.totalSales || 0;
-  const totalRevenue = author.totalRevenueUSD || 0;
-  const payoutBalance = author.payoutBalanceUSD || 0;
+  // Withdrawal state
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  const loadWallet = useCallback(async () => {
+    const w = await getWalletInfo();
+    if (w) setWallet(w);
+  }, []);
+
+  const loadLedger = useCallback(async () => {
+    const l = await getLedger({ limit: 30 });
+    setLedger(l);
+  }, []);
+
+  useEffect(() => {
+    loadWallet();
+  }, [loadWallet, books]);
+
+  const totalSales = wallet?.totalSales || author.totalSales || 0;
+  const totalEarningsNgn = wallet?.totalEarningsNgn || 0;
+  const availableBalanceNgn = wallet?.availableBalanceNgn || 0;
+  const totalCommissionPaidNgn = wallet?.totalCommissionPaidNgn || 0;
+  const totalWithdrawnNgn = wallet?.totalWithdrawnNgn || 0;
+  const totalWithdrawalFeesNgn = wallet?.totalWithdrawalFeesNgn || 0;
   const creatorBooks = books.filter((b) => b.authorId === author.id);
   const recentOrders = orders.slice(0, 5);
 
-  const handleSaveBankDetails = () => {
-    if (!bankForm.bankName || !bankForm.accountNumber) {
-      setBankMsg('Bank name and account number are required.');
+  // Bank verification via Paystack
+  const handleVerifyBank = async () => {
+    if (!bankForm.accountNumber || !bankForm.bankCode) {
+      setBankMsg('Please select a bank and enter your account number.');
       return;
     }
     if (bankForm.accountNumber.length < 8) {
       setBankMsg('Account number must be at least 8 digits.');
       return;
     }
+
+    setBankVerifying(true);
+    setBankMsg(null);
+
+    const result = await verifyBankAccount(bankForm.accountNumber, bankForm.bankCode);
+
+    if (result.success && result.accountName) {
+      setBankForm(prev => ({
+        ...prev,
+        accountName: result.accountName!,
+      }));
+      setBankMsg(`✓ Account verified: ${result.accountName}`);
+    } else {
+      setBankMsg(result.message || 'Could not verify account. Please check your details.');
+    }
+    setBankVerifying(false);
+  };
+
+  const handleSaveBankDetails = () => {
+    if (!bankForm.bankName || !bankForm.accountNumber || !bankForm.accountName) {
+      setBankMsg('Please verify your account first to confirm the account name.');
+      return;
+    }
     updateBankDetails({
       bankName: bankForm.bankName,
       accountNumber: bankForm.accountNumber,
-      accountName: bankForm.accountName || author.name,
+      accountName: bankForm.accountName,
       bankCode: bankForm.bankCode,
       currency: 'NGN',
+      verified: true,
+      verifiedAt: new Date().toISOString(),
     });
     setBankMsg('Bank details saved successfully!');
     setShowBankForm(false);
   };
 
-  const handleWithdraw = async () => {
+  // Withdrawal with confirmation
+  const handleWithdraw = () => {
     const amt = parseFloat(withdrawAmount);
     if (isNaN(amt) || amt <= 0) {
       setWithdrawMsg('Enter a valid amount.');
       return;
     }
-    const result = await requestWithdrawal(amt, currency);
-    setWithdrawMsg(result.message);
-    if (result.success) setWithdrawAmount('');
+    if (amt < platformConfig.minWithdrawal) {
+      setWithdrawMsg(`Minimum withdrawal is ₦${platformConfig.minWithdrawal.toLocaleString()}.`);
+      return;
+    }
+    if (amt > platformConfig.maxWithdrawal) {
+      setWithdrawMsg(`Maximum withdrawal is ₦${platformConfig.maxWithdrawal.toLocaleString()}.`);
+      return;
+    }
+    if (amt > availableBalanceNgn) {
+      setWithdrawMsg('Insufficient balance.');
+      return;
+    }
+    setShowWithdrawConfirm(true);
   };
+
+  const handleConfirmWithdraw = async () => {
+    setWithdrawing(true);
+    setWithdrawMsg(null);
+    const amt = parseFloat(withdrawAmount);
+    const result = await requestWithdrawal(amt, 'NGN');
+    setWithdrawMsg(result.message);
+    if (result.success) {
+      setWithdrawAmount('');
+      setShowWithdrawConfirm(false);
+      loadWallet();
+      loadLedger();
+    }
+    setWithdrawing(false);
+  };
+
+  const getLedgerIcon = (type: LedgerEntry['type']) => {
+    switch (type) {
+      case 'sale_credit': return <ArrowDownRight className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'commission_debit': return <CreditCard className="w-3.5 h-3.5 text-amber-400" />;
+      case 'withdrawal': return <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400" />;
+      case 'withdrawal_fee': return <ArrowUpRight className="w-3.5 h-3.5 text-rose-400" />;
+      case 'refund': return <RefreshCw className="w-3.5 h-3.5 text-orange-400" />;
+      default: return <DollarSign className="w-3.5 h-3.5 text-neutral-400" />;
+    }
+  };
+
+  const getStatusBadge = (status: LedgerEntry['status'] | string) => {
+    switch (status) {
+      case 'completed': return <span className="text-emerald-400">✓</span>;
+      case 'pending': return <Clock className="w-3 h-3 text-amber-400" />;
+      case 'processing': return <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />;
+      case 'failed': return <XCircle className="w-3 h-3 text-rose-400" />;
+      case 'reversed': return <RefreshCw className="w-3 h-3 text-orange-400" />;
+      default: return null;
+    }
+  };
+
+  const withdrawalFee = platformConfig.withdrawalFee;
+  const withdrawAmountNgn = parseFloat(withdrawAmount) || 0;
+  const withdrawNetNgn = withdrawAmountNgn - withdrawalFee;
 
   return (
     <div className="px-3 sm:px-6 py-4 sm:py-8">
@@ -94,9 +205,9 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Sales', value: totalSales.toLocaleString(), icon: ShoppingCart, color: 'text-indigo-400' },
-          { label: 'Total Revenue', value: formatPrice(totalRevenue, currency), icon: DollarSign, color: 'text-emerald-400' },
+          { label: 'Total Earnings', value: `₦${totalEarningsNgn.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-400' },
           { label: 'Published Books', value: creatorBooks.length.toString(), icon: BookOpen, color: 'text-purple-400' },
-          { label: 'Payout Balance', value: formatPrice(payoutBalance, currency), icon: Wallet, color: 'text-amber-400' },
+          { label: 'Available Balance', value: `₦${availableBalanceNgn.toLocaleString()}`, icon: Wallet, color: 'text-amber-400' },
         ].map((stat) => (
           <div key={stat.label} className="bg-neutral-900 border border-neutral-800/60 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -108,6 +219,17 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
         ))}
       </div>
 
+      {/* Commission & Fees Info */}
+      <div className="mb-6 p-3 rounded-xl bg-neutral-900 border border-neutral-800/60 flex flex-wrap gap-4 text-[11px] text-neutral-400">
+        <span>Platform commission: <strong className="text-white">{platformConfig.commissionPercent}%</strong></span>
+        <span>•</span>
+        <span>Withdrawal fee: <strong className="text-white">₦{withdrawalFee.toLocaleString()}</strong></span>
+        <span>•</span>
+        <span>Total commission paid: <strong className="text-amber-400">₦{totalCommissionPaidNgn.toLocaleString()}</strong></span>
+        <span>•</span>
+        <span>Total withdrawn: <strong className="text-indigo-400">₦{totalWithdrawnNgn.toLocaleString()}</strong></span>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Withdraw Panel */}
         <div className="bg-neutral-900 border border-neutral-800/60 rounded-2xl p-6">
@@ -116,8 +238,8 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
           </h3>
           <div className="bg-neutral-950 rounded-xl p-4 mb-4 border border-neutral-800/40">
             <p className="text-[11px] text-neutral-400 mb-1">Available Balance</p>
-            <p className="text-2xl font-bold text-white">{formatPrice(payoutBalance, currency)}</p>
-            <p className="text-[10px] text-neutral-500 mt-1">95% creator payout rate • Instant processing</p>
+            <p className="text-2xl font-bold text-white">₦{availableBalanceNgn.toLocaleString()}</p>
+            <p className="text-[10px] text-neutral-500 mt-1">{platformConfig.commissionPercent}% commission • Instant payouts</p>
           </div>
 
           {/* Bank Details Section */}
@@ -127,7 +249,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                 <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-xs font-medium text-amber-300">Add bank details to withdraw</p>
-                  <p className="text-[10px] text-amber-400/70 mt-0.5">You need to add your bank account before you can withdraw earnings.</p>
+                  <p className="text-[10px] text-amber-400/70 mt-0.5">You need to verify your bank account before withdrawing.</p>
                 </div>
               </div>
               <button
@@ -193,13 +315,22 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
               <div>
                 <label className="block text-[10px] text-neutral-400 mb-1">Account Number *</label>
-                <input
-                  type="text"
-                  value={bankForm.accountNumber}
-                  onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) })}
-                  placeholder="0123456789"
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={bankForm.accountNumber}
+                    onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) })}
+                    placeholder="0123456789"
+                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={handleVerifyBank}
+                    disabled={bankVerifying || !bankForm.accountNumber || !bankForm.bankCode}
+                    className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {bankVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Verify'}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -207,42 +338,46 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                 <input
                   type="text"
                   value={bankForm.accountName}
+                  readOnly={!!bankMsg?.includes('✓')}
                   onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })}
-                  placeholder="John Doe"
+                  placeholder="Auto-verified name"
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <button
                 onClick={handleSaveBankDetails}
-                className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors"
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
               >
                 Save Bank Details
               </button>
 
               {bankMsg && (
-                <p className={`text-[11px] ${bankMsg.includes('success') ? 'text-emerald-400' : 'text-rose-400'}`}>{bankMsg}</p>
+                <p className={`text-[11px] ${bankMsg.includes('✓') ? 'text-emerald-400' : 'text-rose-400'}`}>{bankMsg}</p>
               )}
             </div>
           )}
 
+          {/* Withdraw Form */}
           <div className="flex gap-2 mb-3">
             <input
               type="number"
               value={withdrawAmount}
               onChange={(e) => setWithdrawAmount(e.target.value)}
-              placeholder="Amount in USD"
+              placeholder="Amount in NGN"
               className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
             />
             <button
               onClick={handleWithdraw}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+              disabled={!author.bankDetails?.accountNumber}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
             >
               Withdraw
             </button>
           </div>
+
           {withdrawMsg && (
-            <p className="text-[11px] text-emerald-400">{withdrawMsg}</p>
+            <p className={`text-[11px] mb-2 ${withdrawMsg.includes('success') || withdrawMsg.includes('initiated') ? 'text-emerald-400' : 'text-rose-400'}`}>{withdrawMsg}</p>
           )}
 
           {/* Recent Withdrawals */}
@@ -251,8 +386,12 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
               <p className="text-[11px] text-neutral-400 mb-2">Recent Withdrawals</p>
               {withdrawals.slice(0, 3).map((w) => (
                 <div key={w.id} className="flex items-center justify-between py-1.5 text-[11px]">
-                  <span className="text-neutral-300">{CURRENCIES[w.currency]?.symbol}{w.amountLocal.toLocaleString()}</span>
-                  <span className="text-emerald-400 capitalize">{w.status}</span>
+                  <span className="text-neutral-300">₦{w.amountLocal.toLocaleString()}</span>
+                  <span className={`capitalize ${
+                    w.status === 'successful' ? 'text-emerald-400' :
+                    w.status === 'failed' ? 'text-rose-400' :
+                    'text-amber-400'
+                  }`}>{w.status}</span>
                 </div>
               ))}
             </div>
@@ -277,7 +416,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                   <img src={book.coverImage} alt={book.title} className="w-10 h-14 rounded-lg object-cover" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-white truncate">{book.title}</p>
-                    <p className="text-[10px] text-neutral-400">{book.salesCount} sales • {formatPrice(book.priceUSD, currency)}</p>
+                    <p className="text-[10px] text-neutral-400">{book.salesCount} sales • ₦{(book.priceUSD * 1500).toLocaleString()}</p>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenGoogleSeo(book); }}
@@ -308,7 +447,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
                     <p className="text-[11px] font-medium text-white truncate">{order.bookTitle}</p>
                     <p className="text-[10px] text-neutral-400">{order.buyerName} • {order.date}</p>
                   </div>
-                  <span className="text-xs font-semibold text-emerald-400">{formatPrice(order.amountPaid, currency)}</span>
+                  <span className="text-xs font-semibold text-emerald-400">₦{(order.amountPaid * 1500).toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -320,8 +459,90 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
           >
             <Eye className="w-3.5 h-3.5" /> View Public Storefront
           </button>
+
+          {/* Ledger Toggle */}
+          <button
+            onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger(); }}
+            className="w-full mt-2 px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> {showLedger ? 'Hide' : 'View'} Ledger
+          </button>
+
+          {/* Ledger */}
+          {showLedger && (
+            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto">
+              {ledger.length === 0 ? (
+                <p className="text-[10px] text-neutral-500">No transactions yet.</p>
+              ) : (
+                ledger.map((entry) => (
+                  <div key={entry.id} className="p-2.5 rounded-lg bg-neutral-950/80 border border-neutral-800/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        {getLedgerIcon(entry.type)}
+                        <span className="text-[10px] text-neutral-300 capitalize">{entry.type.replace(/_/g, ' ')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {getStatusBadge(entry.status)}
+                        <span className={`text-[11px] font-semibold ${entry.direction === 'credit' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {entry.direction === 'credit' ? '+' : '-'}₦{entry.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-neutral-500 mt-0.5 truncate">{entry.description}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Withdrawal Confirmation Modal */}
+      {showWithdrawConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-neutral-950/80 backdrop-blur-md">
+          <div className="w-full sm:max-w-sm bg-neutral-900 border border-neutral-800 sm:rounded-2xl shadow-2xl p-6 rounded-t-2xl sm:rounded-2xl">
+            <h3 className="text-sm font-bold text-white mb-4">Confirm Withdrawal</h3>
+
+            <div className="bg-neutral-950 rounded-xl p-4 border border-neutral-800/40 space-y-2 mb-4">
+              <div className="flex justify-between text-xs">
+                <span className="text-neutral-400">Withdrawal Amount</span>
+                <span className="text-white font-semibold">₦{withdrawAmountNgn.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-neutral-400">Withdrawal Fee</span>
+                <span className="text-rose-400">-₦{withdrawalFee.toLocaleString()}</span>
+              </div>
+              <div className="border-t border-neutral-800/60 pt-2 flex justify-between text-xs font-bold">
+                <span className="text-white">You Will Receive</span>
+                <span className="text-emerald-400">₦{withdrawNetNgn.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="bg-neutral-950 rounded-xl p-3 border border-neutral-800/40 mb-4 text-[11px]">
+              <p className="text-neutral-400">Destination:</p>
+              <p className="text-white font-medium">{author.bankDetails?.bankName} ••••{author.bankDetails?.accountNumber?.slice(-4)}</p>
+              <p className="text-neutral-400">{author.bankDetails?.accountName}</p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowWithdrawConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmWithdraw}
+                disabled={withdrawing}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              >
+                {withdrawing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Confirm Withdrawal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

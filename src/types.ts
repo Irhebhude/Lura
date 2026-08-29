@@ -63,6 +63,7 @@ export interface Order {
   bookId: string;
   bookTitle: string;
   bookCover: string;
+  authorId: string;
   authorName: string;
   buyerEmail: string;
   buyerName: string;
@@ -71,7 +72,13 @@ export interface Order {
   date: string;
   paymentMethod: string;
   downloadToken: string;
-  status: 'completed' | 'processing';
+  status: 'completed' | 'processing' | 'pending' | 'failed';
+  paystackReference?: string;
+  paystackAccessCode?: string;
+  grossAmount?: number;
+  commissionAmount?: number;
+  sellerNetAmount?: number;
+  platformFee?: number;
 }
 
 export interface BankDetails {
@@ -83,6 +90,9 @@ export interface BankDetails {
   swiftCode?: string;
   routingNumber?: string;
   bvn?: string;
+  verified?: boolean;
+  verifiedAt?: string;
+  paystackRecipientCode?: string;
 }
 
 export interface WithdrawalRequest {
@@ -91,11 +101,18 @@ export interface WithdrawalRequest {
   amountLocal: number;
   currency: CurrencyCode;
   bankName: string;
+  bankCode?: string;
   accountNumber: string;
   accountName: string;
-  status: 'completed' | 'processing' | 'pending';
+  status: 'pending' | 'processing' | 'successful' | 'failed' | 'refunded';
   date: string;
   reference: string;
+  withdrawalFee?: number;
+  netAmount?: number;
+  paystackTransferCode?: string;
+  paystackTransferReference?: string;
+  failureReason?: string;
+  completedAt?: string;
 }
 
 export interface AuthorProfile {
@@ -109,7 +126,12 @@ export interface AuthorProfile {
   totalSales: number;
   totalRevenueUSD: number;
   payoutBalanceUSD: number;
+  pendingBalance?: number;
+  totalCommissionPaid?: number;
+  totalWithdrawn?: number;
+  totalWithdrawalFees?: number;
   bankDetails?: BankDetails;
+  paystackSubaccountCode?: string;
   socials?: {
     twitter?: string;
     website?: string;
@@ -138,6 +160,34 @@ export interface Coupon {
 }
 
 export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'NGN' | 'CAD' | 'AUD' | 'KES' | 'GHS';
+
+export interface LedgerEntry {
+  id: string;
+  referenceId: string;
+  userId: string;
+  sellerId?: string;
+  buyerId?: string;
+  orderId?: string;
+  ebookId?: string;
+  type: 'sale_credit' | 'commission_debit' | 'withdrawal' | 'withdrawal_fee' | 'refund' | 'adjustment';
+  amount: number;
+  currency: CurrencyCode;
+  direction: 'credit' | 'debit';
+  status: 'completed' | 'pending' | 'failed' | 'reversed';
+  description: string;
+  paystackReference?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformConfig {
+  commissionPercent: number;
+  withdrawalFee: number;
+  minWithdrawal: number;
+  maxWithdrawal: number;
+  minEbookPrice: number;
+}
 
 export interface CurrencyConfig {
   code: CurrencyCode;

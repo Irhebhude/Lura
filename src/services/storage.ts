@@ -1,4 +1,4 @@
-import { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, BankDetails, UserAccount } from '../types';
+import { EBook, AuthorProfile, Order, Review, Coupon, CurrencyCode, WithdrawalRequest, BankDetails, UserAccount, LedgerEntry, PlatformConfig } from '../types';
 import { INITIAL_EBOOKS, INITIAL_AUTHOR, INITIAL_REVIEWS, INITIAL_COUPONS, CURRENCIES } from '../data/initialData';
 
 // ── Password Hashing ────────────────────────────────────────────
@@ -44,6 +44,9 @@ interface Cache {
   withdrawals: WithdrawalRequest[];
   users: UserAccount[];
   currentUser: UserAccount | null;
+  ledger: LedgerEntry[];
+  config: PlatformConfig;
+  webhookEvents: unknown[];
 }
 
 let _cache: Cache = {
@@ -57,6 +60,9 @@ let _cache: Cache = {
   withdrawals: [],
   users: [],
   currentUser: null,
+  ledger: [],
+  config: { commissionPercent: 5, withdrawalFee: 50, minWithdrawal: 1000, maxWithdrawal: 500000, minEbookPrice: 500 },
+  webhookEvents: [],
 };
 
 let _initialized = false;
@@ -155,17 +161,15 @@ export function getWithdrawals(): WithdrawalRequest[] {
 }
 
 export async function requestWithdrawal(
-  amountUSD: number,
-  currency: CurrencyCode,
+  amountNgn: number,
+  currency: CurrencyCode = 'NGN',
 ): Promise<{ success: boolean; message: string; withdrawal?: WithdrawalRequest }> {
-  if (amountUSD <= 0) return { success: false, message: 'Invalid withdrawal amount.' };
-  if (_cache.author.payoutBalanceUSD < amountUSD) return { success: false, message: 'Insufficient balance in your Lura wallet.' };
+  if (amountNgn <= 0) return { success: false, message: 'Invalid withdrawal amount.' };
   if (!_cache.author.bankDetails?.accountNumber) return { success: false, message: 'Please configure your bank payout details in Creator Studio first.' };
 
   try {
-    const result = await api<{ success: boolean; message: string; withdrawal?: WithdrawalRequest }>('POST', '/withdrawals', { amountUSD, currency });
+    const result = await api<{ success: boolean; message: string; withdrawal?: WithdrawalRequest }>('POST', '/withdrawals', { amountNgn, currency });
     if (result.success && result.withdrawal) {
-      _cache.author.payoutBalanceUSD -= amountUSD;
       _cache.withdrawals.unshift(result.withdrawal);
       dispatch();
     }
@@ -173,6 +177,76 @@ export async function requestWithdrawal(
   } catch {
     return { success: false, message: 'Network error. Please try again.' };
   }
+}
+
+// ── Payment Flow ────────────────────────────────────────────────
+export async function initiatePayment(params: {
+  bookId: string;
+  email: string;
+  currency?: string;
+}): Promise<{ success: boolean; authorization_url?: string; access_code?: string; reference?: string; order?: Order; sandbox?: boolean; message?: string }> {
+  try {
+    return await api('POST', '/payments/initialize', params);
+  } catch {
+    return { success: false, message: 'Payment initialization failed.' };
+  }
+}
+
+export async function verifyPayment(reference: string): Promise<{ success: boolean; order?: Order; message?: string }> {
+  try {
+    const result = await api<{ success: boolean; order?: Order; message?: string }>('POST', '/payments/verify', { reference });
+    if (result.success && result.order) {
+      const oi = _cache.orders.findIndex(o => o.id === result.order!.id);
+      if (oi >= 0) _cache.orders[oi] = result.order!; else _cache.orders.unshift(result.order!);
+      if (!_cache.library.includes(result.order!.bookId)) _cache.library.unshift(result.order!.bookId);
+      dispatch();
+    }
+    return result;
+  } catch {
+    return { success: false, message: 'Verification failed.' };
+  }
+}
+
+// ── Bank Verification ───────────────────────────────────────────
+export async function verifyBankAccount(accountNumber: string, bankCode: string): Promise<{ success: boolean; accountName?: string; recipientCode?: string; verified?: boolean; message?: string }> {
+  try {
+    return await api('POST', '/bank/resolve', { accountNumber, bankCode });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Bank verification failed.';
+    return { success: false, message: msg };
+  }
+}
+
+// ── Wallet & Ledger ─────────────────────────────────────────────
+export interface WalletInfo {
+  availableBalanceNgn: number;
+  totalEarningsNgn: number;
+  totalCommissionPaidNgn: number;
+  totalWithdrawnNgn: number;
+  totalWithdrawalFeesNgn: number;
+  totalSales: number;
+  booksPublished: number;
+}
+
+export async function getWalletInfo(): Promise<WalletInfo | null> {
+  try {
+    return await api<WalletInfo>('GET', '/wallet');
+  } catch {
+    return null;
+  }
+}
+
+export async function getLedger(params?: { limit?: number }): Promise<LedgerEntry[]> {
+  try {
+    return await api<LedgerEntry[]>('GET', `/ledger?limit=${params?.limit || 50}`);
+  } catch {
+    return [];
+  }
+}
+
+// ── Platform Config ─────────────────────────────────────────────
+export function getPlatformConfig(): PlatformConfig {
+  return _cache.config;
 }
 
 // ── Library ──────────────────────────────────────────────────────
