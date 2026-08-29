@@ -22,7 +22,7 @@ import {
   getCurrentUser,
   signOutUser,
 } from './services/storage';
-import { BookOpen, Globe, ShieldCheck } from 'lucide-react';
+import { BookOpen, Globe, ShieldCheck, MessageCircle } from 'lucide-react';
 
 export default function App() {
   const [books, setBooks] = useState<EBook[]>([]);
@@ -274,7 +274,7 @@ export default function App() {
             <span className="font-bold text-white font-serif">Lura</span>
             <span className="text-neutral-500">© {new Date().getFullYear()}</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-center">
             <span className="flex items-center gap-1 text-emerald-400">
               <Globe className="w-3 h-3" /> Schema Validated
             </span>
@@ -284,6 +284,15 @@ export default function App() {
             </span>
             <span className="text-neutral-600">•</span>
             <span>95% Payouts</span>
+            <span className="text-neutral-600">•</span>
+            <a
+              href="https://whatsapp.com/channel/0029Vb8ZFPUF1YlbvE5Frr04"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <MessageCircle className="w-3 h-3" /> Join WhatsApp Channel
+            </a>
           </div>
         </div>
       </footer>
