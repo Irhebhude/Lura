@@ -341,28 +341,32 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({
 
               <div>
                 <label className="block text-[10px] text-neutral-400 mb-1">Bank *</label>
-                <select
-                  value={bankForm.bankName}
-                  onChange={(e) => {
-                    const selected = bankList.find(b => b.name === e.target.value);
-                    setBankForm({ ...bankForm, bankName: e.target.value, bankCode: selected?.code || '' });
-                  }}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="" className="bg-neutral-900">Select your bank</option>
-                  {bankList.map(b => (
-                    <option key={b.code} value={b.name} className="bg-neutral-900">{b.name}</option>
-                  ))}
-                </select>
-                {bankList.length === 0 && banksLoading && (
-                  <p className="text-[9px] text-neutral-500 mt-1">Loading banks for {bankCurrency}...</p>
+                {bankList.length > 0 ? (
+                  <select
+                    value={bankForm.bankName}
+                    onChange={(e) => {
+                      const selected = bankList.find(b => b.name === e.target.value);
+                      setBankForm({ ...bankForm, bankName: e.target.value, bankCode: selected?.code || '' });
+                    }}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="" className="bg-neutral-900">Select your bank</option>
+                    {bankList.map(b => (
+                      <option key={b.code} value={b.name} className="bg-neutral-900">{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={bankForm.bankName}
+                    onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })}
+                    placeholder={banksLoading ? `Loading banks for ${bankCurrency}...` : `Enter your bank name (e.g. ${bankCurrency === 'NGN' ? 'GTBank' : bankCurrency === 'USD' ? 'Chase Bank' : bankCurrency === 'GBP' ? 'Barclays' : bankCurrency === 'EUR' ? 'Deutsche Bank' : bankCurrency === 'CAD' ? 'RBC' : bankCurrency === 'AUD' ? 'Commonwealth Bank' : bankCurrency === 'GHS' ? 'Ecobank' : 'KCB Bank'})}`}
+                    disabled={banksLoading}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                  />
                 )}
-                {bankList.length === 0 && !banksLoading && banksLoaded && (
-                  <p className="text-[9px] text-amber-400 mt-1">
-                    {['EUR', 'USD', 'GBP', 'CAD', 'AUD'].includes(bankCurrency)
-                      ? `Direct bank transfers not available for ${bankCurrency}. Switch to NGN, GHS, or KES for bank payouts.`
-                      : `No banks found for ${bankCurrency}. Try a different currency.`}
-                  </p>
+                {banksLoading && bankList.length === 0 && (
+                  <p className="text-[9px] text-neutral-500 mt-1">Loading banks for {bankCurrency}...</p>
                 )}
               </div>
 
